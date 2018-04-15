@@ -1,0 +1,61 @@
+MALUVA es un módulo para DAAD (un EXTERN) que facilita distintas funciones que en general dependen del uso de una unidad de almacenamiento rápida (disco, cartucho, etc.)
+
+MODO DE USO
+===========
+
+Maluva soporta distintas funciones, que dependen de la plataforma de destino. El objetivo es tener disponible MALUVA para ZX Spectrum (disco +3), ZX Spectrum (ESXDOS), Amstrad CPC (disco), Amstrad CPC (M4) y MSX (cartucho). Por el momento solo está disponible para ZX Spectrum (ESXDOS) y en estado de alfa, por lo que algunas cosas podrían cambiar.
+
+INCLUSION EN EL CÓDIGO FUENTE
+=============================
+
+Para incluir MALUVA en el código fuente de DAAD debe hacerse incluyendo la directiva #extern junto con el nombre del fichero BIN de la distribución de Maluva que corresponda a la plataforma a generar, en la sección /CTL del SCE por ejemplo para ESXDOS:
+
+/CTL    ;Sección de control
+#extern MLV_ESX.BIN
+
+Es importante, absolutamente necesario, que se coloque como lo primero que haya en esa sección, sin nada por delante.
+
+FUNCIONES POR PLATAFORMA
+========================
+
+Las llamadas a MALUVA se hacen mediante el condacto EXTERN, que tiene dos parámetros. Usaremos el primero para indicar la función y el segundo si es necesario para indicarle a la función en concreto un parámetro adicional.
+
+Así una llamade EXTERN sería así:
+
+EXTERN <número de función> <parámetro adicional>
+
+Si una función no requiere parámetro adicional hay que ponerlo de todos modos (se puede poner un 0 mismamente)
+
+ESXDOS
+------
+
+= Función 0 : Cargar Gráfico Raster =
+
+Esta función carga un gráfico raster sin comprimir de una altura variable en la pantalla. Los gráficos raster son generados por la herramienta SC2DRG que está incluida en MALUVA.
+
+Parámetros: se pasará como segundo parámetro el número de gráfico a cargar, por ejemplo "EXTERN 0 12" cargará el gráfico 012.DRG, y "EXTERN 0 [Player]" cargará el gráfico de la localidad donde está el jugador. Esta última llamada es especialmente útil para reemplazar en el fichero SCE la llamada "PICTURE [Player]" y así hacer que los gráficos vectoriales no salgan y en su lugar salgan los raster.
+
+= Función 1: Grabar partida (aun no implementada)
+
+Esta función tiene  como parámetro adicional el mismo que el condacto SAVE tiene como primer parámetro, y permite grabar la partida en disco. Se llamaría con "EXTERN 1 <opt>" y lo ideal es sustituir en nuestro fichero SCE el condacto SAVE por la misma.
+
+= Función 2: Cargar partida (aun no implementada)
+
+Esta función tiene  como parámetro adicional el mismo que el condacto LOAD tiene como primer parámetro, y permite grabar la partida en disco. Se llamaría con "EXTERN 2 <opt>" y lo ideal es sustituir en nuestro fichero SCE el condacto LOAD por la misma.
+
+
++3DOS
+------
+
+[Pendiente]
+
+CPC
+---
+
+[Pendiente]
+
+MSX
+---
+
+[Pendiente]
+
