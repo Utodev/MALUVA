@@ -3,69 +3,23 @@
 			ORG $843C
 
 
-; ********************************************************************                        
-;                                 SETTINGS
-; *******************************************************************
-; Choose settings  wisely to get the proper Z80 binary
-
-			define IS_ZX     	1
-			define FOR_ESXDOS 	1
-			define FOR_3DOS 	0
-
-			define IS_CPC 		0
-			define FOR_AMSDOS	0
-			define FOR_M4		0
-
-			define IS_MSX		0
-
+		
 
 ; ********************************************************************                        
 ;                          CONSTANTS AND OUTPUT
 ; *******************************************************************
 
-			IF FOR_3DOS=1
-                        OUTPUT  DRG_3DOS.BIN
-			ENDIF
-
-			IF FOR_ESXDOS=1
-                        OUTPUT  DRG_ESX.BIN
+                        OUTPUT  MLV_ESX.BIN
 			define M_GETSETDRV  	$89
 			define F_OPEN  		$9a
 			define F_CLOSE 		$9b
 			define F_READ  		$9d
 			define F_WRITE 		$9e       
 			define FA_READ 		$01
-			ENDIF
 
-			IF FOR_M4=1
-                        OUTPUT  DRG_M4.BIN
-			ENDIF
-
-			IF FOR_AMSDOS=1
-                        OUTPUT  DRG_CPC.BIN
-			ENDIF
-
-			IF IS_ZX =1
 			define VRAM_ADDR 	$4000 ; The video RAM address
 			define VRAM_ATTR_ADDR   VRAM_ADDR + $1800 ;  points to attributes zone in VRAM 
- 			define DBADDR  		33664 ; The address of the game database (no use in this EXTERN so far)
- 			define EXTVECT		DBADDR + 162
-			ENDIF
 
-			IF IS_MSX=1
-			OUTPUT DRG_MSX.BIN
-			define VRAM_ADDR 	$4000
-			define VECTORS		45056
- 			define DBADDR  		256
-			ENDIF
-
-			IF IS_CPC=1
-			define VRAM_ADDR 	$C000
-			define VECTORS		 2112
- 			define DBADDR  		10368
-			ENDIF
-
- 			define EXTERN_VECT	VECTORS + 10
 
 ; ********************************************************************                        
 ;                                 MAIN
