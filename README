@@ -31,6 +31,9 @@ Algunos autores que sepan programar se preguntarán por qué esto va así y no a
 ESXDOS
 ------
 
+Para ESXDOS, debéis generar un fichero .TAP como si fuérais a generar para cinta. Después basta con colocar ese .TAP en la misma carpeta que los gráficos.
+
+
 = Función 0 : Cargar Gráfico Raster =
 
 Esta función carga un gráfico raster sin comprimir de una altura variable en la pantalla. Los gráficos raster son generados por la herramienta SC2DRG que está incluida en MALUVA.
@@ -61,3 +64,12 @@ MSX
 
 [Pendiente]
 
+
+SC2DRG
+======
+
+SC2DRG es un conversor pensado para convertir de distintos tipos de gráfico de ordenadores de 8 bit, a un formato llamado DRG que está pensado para ser cargado fácil desde cada plataforma. En si el formato DRG (DAAD Raster Graphic) es simplemente un fichero que contiene un primer byte que indica el número de filas de pixels que tiene la imagen, seguido de los datos de la imagen. Los datos de la imagen varian totalmente dependiendo de la plataforma.
+
+SC2DRG ahora mismo solo convierte de .SCR de Spectrum a .DRG para Spectrum, pero la intención es convertir .SCR de Amstrad y .SC2 de MSX en el futuro.
+
+En la distribución en Github está el ejecutable para Windows, pero para compilar SC2DRG solo necesitáis instalar freepascal (fpc) o Lazarus, y ejecutar "fpc SC2DRG.PAS".
