@@ -1,6 +1,7 @@
 ; MALUVA (C) 2018 Uto
 ; MIT License applies, see LICENSE file
 ; TO BE COMPILED WITH SJASMPLUS
+; Thanks to Boriel for his 8 bits division code in ZX-Basic, DivByTen function is based on his code
 
 			ORG $843C
                         OUTPUT  MLV_ESX.BIN
