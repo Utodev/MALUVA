@@ -1,15 +1,16 @@
-; EZ (C) 2018 Uto
+; MALUVA (C) 2018 Uto
+; MIT License applies, see LICENSE file
 ; TO BE COMPILED WITH SJASMPLUS
+
 			ORG $843C
-
-
-		
+                        OUTPUT  MLV_ESX.BIN
+	
 
 ; ********************************************************************                        
-;                          CONSTANTS AND OUTPUT
+;                           CONSTANTS 
 ; *******************************************************************
 
-                        OUTPUT  MLV_ESX.BIN
+
 			define M_GETSETDRV  	$89
 			define F_OPEN  		$9a
 			define F_CLOSE 		$9b
@@ -146,11 +147,11 @@ drawLoop		LD 	A, D 		; file handle
                         DEC 	E
                         JR 	NZ, drawLoop
 
-; ---- Close file	read the attributes 
+; read the attributes 
 
 readAttr		XOR 	A
 			LD	H, A
-			LD 	A, (DRGNumLines)	; restone number of lines
+			LD 	A, (DRGNumLines)	; restore number of lines
 			LD 	L, A			; now HL = number of lines 
 			ADC 	HL, HL
 			ADC 	HL, HL			; Multiply by 4 (32 bytes of attributes per each 8 lines  = means 4 per line)
@@ -173,27 +174,27 @@ cleanExit		EI
 			POP 	IX
 			RET
 
+LoadGame		JR cleanExit
+SaveGame		JR cleanExit	
+
+
+; ********************************************************************                        
+;                           AUX FUNCTIONS
+; *******************************************************************
+
+
 DivByTen		LD 	D, A			; Does A / 10
 			LD 	E, 10			; At this point do H / 10
 			LD B, 8
-			XOR A		; A = 0, Carry Flag = 0
-	
+			XOR A				; A = 0, Carry Flag = 0
 DivByTenLoop		SLA	D
 			RLA			
 			CP	E		
 			JR	C, DivByTenNoSub
 			SUB	E		
 			INC	D		
-
 DivByTenNoSub		djnz DivByTenLoop
-
-			;LD	L, A		; l remainder
-			;LD	A, H		; a = Quotient, 
-			RET			;A= remainder, D = quotient
-
-LoadGame		JR cleanExit		
-SaveGame		JR cleanExit	
-
+			RET				;A= remainder, D = quotient
 
 Filename		DB "000.DRG",0
 DRGNumLines		DB 0	
