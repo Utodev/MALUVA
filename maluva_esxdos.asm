@@ -30,8 +30,19 @@ Start
 			PUSH 	IX
 			PUSH 	BC
 
-; ---- Set the filename
+			LD 	D, A		; Preserve first parameter
+			LD 	A, (BC)		; Get second parameter (function number) on A
 
+			OR 	A
+			JR 	Z, LoadDRG
+			CP 	1
+			JP 	Z, SaveGame
+			CP 	2
+			JP 	Z, LoadGame
+			JP 	cleanExit
+; ---- Set the filename
+LoadDRG
+			LD 	A, D		; Restore first parameter
 			CALL 	DivByTen
 			ADD 	'0'
 			LD 	HL, Filename+2
@@ -180,6 +191,8 @@ DivByTenNoSub		djnz DivByTenLoop
 			;LD	A, H		; a = Quotient, 
 			RET			;A= remainder, D = quotient
 
+LoadGame		JR cleanExit		
+SaveGame		JR cleanExit	
 
 
 Filename		DB "000.DRG",0

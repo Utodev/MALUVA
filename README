@@ -18,13 +18,15 @@ Es importante, absolutamente necesario, que se coloque como lo primero que haya 
 FUNCIONES POR PLATAFORMA
 ========================
 
-Las llamadas a MALUVA se hacen mediante el condacto EXTERN, que tiene dos parámetros. Usaremos el primero para indicar la función y el segundo si es necesario para indicarle a la función en concreto un parámetro adicional.
+Las llamadas a MALUVA se hacen mediante el condacto EXTERN, que tiene dos parámetros. Usaremos el segundo para indicar la función y el primero si es necesario para indicarle a la función en concreto un parámetro adicional.
 
 Así una llamade EXTERN sería así:
 
-EXTERN <número de función> <parámetro adicional>
+EXTERN <parámetro adicional> <número de función> 
 
-Si una función no requiere parámetro adicional hay que ponerlo de todos modos (se puede poner un 0 mismamente)
+Si una función no necesitara parámetro adicional hay que ponerlo de todos modos (se puede poner un 0 mismamente). 
+
+Algunos autores que sepan programar se preguntarán por qué esto va así y no al reves (primero la función y luego el parámetro), la respuesta es que DAAD permite indirección solo en el primer parámetro, y como se verá más adelante para algunos usos disponer de indirección es esencial.
 
 ESXDOS
 ------
@@ -33,15 +35,15 @@ ESXDOS
 
 Esta función carga un gráfico raster sin comprimir de una altura variable en la pantalla. Los gráficos raster son generados por la herramienta SC2DRG que está incluida en MALUVA.
 
-Parámetros: se pasará como segundo parámetro el número de gráfico a cargar, por ejemplo "EXTERN 0 12" cargará el gráfico 012.DRG, y "EXTERN 0 [Player]" cargará el gráfico de la localidad donde está el jugador. Esta última llamada es especialmente útil para reemplazar en el fichero SCE la llamada "PICTURE [Player]" y así hacer que los gráficos vectoriales no salgan y en su lugar salgan los raster.
+Parámetros: se pasará como segundo parámetro el número de gráfico a cargar, por ejemplo "EXTERN 12 0" cargará el gráfico 012.DRG, y "EXTERN [Player] 0" cargará el gráfico de la localidad donde está el jugador. Esta última llamada es especialmente útil para reemplazar en el fichero SCE la llamada "PICTURE [Player]" y así hacer que los gráficos vectoriales no salgan y en su lugar salgan los raster.
 
 = Función 1: Grabar partida (aun no implementada)
 
-Esta función tiene  como parámetro adicional el mismo que el condacto SAVE tiene como primer parámetro, y permite grabar la partida en disco. Se llamaría con "EXTERN 1 <opt>" y lo ideal es sustituir en nuestro fichero SCE el condacto SAVE por la misma.
+Esta función tiene  como parámetro adicional el mismo que el condacto SAVE tiene como primer parámetro, y permite grabar la partida en disco. Se llamaría con "EXTERN <opt> 1" y lo ideal es sustituir en nuestro fichero SCE el condacto SAVE por la misma.
 
 = Función 2: Cargar partida (aun no implementada)
 
-Esta función tiene  como parámetro adicional el mismo que el condacto LOAD tiene como primer parámetro, y permite grabar la partida en disco. Se llamaría con "EXTERN 2 <opt>" y lo ideal es sustituir en nuestro fichero SCE el condacto LOAD por la misma.
+Esta función tiene  como parámetro adicional el mismo que el condacto LOAD tiene como primer parámetro, y permite grabar la partida en disco. Se llamaría con "EXTERN <opt> 2" y lo ideal es sustituir en nuestro fichero SCE el condacto LOAD por la misma.
 
 
 +3DOS
