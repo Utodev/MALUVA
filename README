@@ -40,13 +40,13 @@ Esta función carga un gráfico raster sin comprimir de una altura variable en l
 
 Parámetros: se pasará como segundo parámetro el número de gráfico a cargar, por ejemplo "EXTERN 12 0" cargará el gráfico 012.DRG, y "EXTERN [Player] 0" cargará el gráfico de la localidad donde está el jugador. Esta última llamada es especialmente útil para reemplazar en el fichero SCE la llamada "PICTURE [Player]" y así hacer que los gráficos vectoriales no salgan y en su lugar salgan los raster.
 
-= Función 1: Grabar partida (aun no implementada)
+= Función 1: Grabar partida 
 
-Esta función tiene  como parámetro adicional el mismo que el condacto SAVE tiene como primer parámetro, y permite grabar la partida en disco. Se llamaría con "EXTERN <opt> 1" y lo ideal es sustituir en nuestro fichero SCE el condacto SAVE por la misma.
+Esta función tiene un parámetro adicional irrelevante (poner cualquier cosa), y permite grabar la partida en disco. Se llamaría con "EXTERN 0 1" y lo ideal es sustituir en nuestro fichero SCE el condacto SAVE por la misma. Si por cualquier razón no puede escribir el fichero (por ejemplo que el disco esté lleno o que se haya retirado el mismo) mostrará el mensaje del sistema 57 (error de E/S).
 
-= Función 2: Cargar partida (aun no implementada)
+= Función 2: Cargar partida
 
-Esta función tiene  como parámetro adicional el mismo que el condacto LOAD tiene como primer parámetro, y permite grabar la partida en disco. Se llamaría con "EXTERN <opt> 2" y lo ideal es sustituir en nuestro fichero SCE el condacto LOAD por la misma.
+Esta función tiene un parámetro adicional irrelevante (poner cualquier cosa), y permite cargar la partida desde disco. Se llamaría con "EXTERN 0 2" y lo ideal es sustituir en nuestro fichero SCE el condacto LOAD por la misma. Si por cualquier razón no puede leer el fichero (por ejemplo que no exista o que se haya retirado el disco) mostrará el mensaje del sistema 57 (error de E/S).
 
 
 +3DOS

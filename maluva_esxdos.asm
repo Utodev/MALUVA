@@ -18,6 +18,8 @@
 			define F_READ  		$9d
 			define F_WRITE 		$9e       
 			define FA_READ 		$01
+			define FA_WRITE		$02
+			define FA_CREATE_AL	$0C
 
 			define VRAM_ADDR 	$4000 ; The video RAM address
 			define VRAM_ATTR_ADDR   VRAM_ADDR + $1800 ;  points to attributes zone in VRAM 
@@ -29,9 +31,9 @@
 
 Start			
 			DI
-			PUSH 	IX
 			PUSH 	BC
-
+			PUSH 	IX
+			
 			LD 	D, A		; Preserve first parameter
 			LD 	A, (BC)		; Get second parameter (function number) on A
 
@@ -61,10 +63,9 @@ LoadDRG
 
 
 ; --- Set default disk  
-			XOR	A  
-                        RST     $08 
-                        db      M_GETSETDRV
+			CALL 	setDefaultDisk
                         JR      C, cleanExit
+
 
 ; --- open file
                         LD      B, FA_READ   
@@ -171,33 +172,120 @@ readAttr		XOR 	A
                         DB      F_CLOSE
 	
 cleanExit		EI
-			POP 	BC
 			POP 	IX
+			POP 	BC
 			RET
 
-LoadGame		JR cleanExit
-SaveGame		JR cleanExit	
+; Both read savegame and load savegame use the same code, that is just slightly modified before jumping in the common part at DoReadOrWrite
+
+LoadGame		LD  	A, FA_READ
+			LD 	(OpenMode+1),A
+			LD  	A, F_READ
+			LD 	(ReadWrite),A
+			JR	DoReadOrWrite
+
+SaveGame		LD  	A, FA_CREATE_AL
+			LD 	(OpenMode+1),A
+			LD  	A, F_WRITE
+			LD 	(ReadWrite),A
+
+
+DoReadOrWrite		
+			EI
+			CALL 	$7056  			; Ask for file name
+			DI
+			CALL 	cleanSaveName		; Convert DAAD 10 filename into 8.3 filename
+
+; --- Set default disk  
+			CALL 	setDefaultDisk
+                        JR      C, diskFailure
+
+; --- open file
+OpenMode                LD      B, FA_READ		; May be modified by FA_CREATE_AL above
+			LD   	IX, SaveLoadFilename
+			RST     $08			
+                        DB      F_OPEN      
+                        JR      C, diskFailure
+                        LD 	(SavegameHandle+1), A
+; --- read or write file
+/*FALTA: si falla al abrir, leer o escribir mostrar SYSMESS.Tambien si al leer lee menos de 512
+/56
+Unidad no preparada. Pulsa una tecla para volver a intentarlo.
+/57
+Error de entrada/salida.
+/58
+El disco o el directorio puede estar lleno.
+/59
+Nombre de fichero no v lido.
+	*/
+
+
+			POP	IX			; Gets IX value back from stack, then push again
+			PUSH 	IX
+			LD 	BC, 512			; Save flags and objects
+ 			RST     $08
+ReadWrite               DB      F_READ     		; May be modified by F_WRITE ABOVE
+			JR	C, diskFailure
+                      
+
+SavegameHandle		LD 	A, $FF			; That $FF will be modifed by code above
+			RST     $08
+                        DB      F_CLOSE
+
+
+			JR 	cleanExit	
+
+diskFailure		LD 	L, 57			; E/S error
+			CALL    $6DE8
+			JR 	cleanExit
+			
+
 
 
 ; ********************************************************************                        
 ;                           AUX FUNCTIONS
 ; *******************************************************************
 
+; *** Makes filename read by DAAD to be compliant with ESXDOS 8+3 filenames***
+cleanSaveName		LD 	HL, $70B5			; address of filename requested
+			LD 	BC, $08FF			; we will use LDI together with DJNZ, B will work for DJNZ but we set C to $FF
+			LD 	DE, SaveLoadFilename
+cleanSaveNameLoop	LD 	A, (HL)				; too to avoid LDI decrement of BC to affect B
+			OR 	A
+			JR	Z, cleanSaveSetExtension
+			CP 	$20
+			JR	Z, cleanSaveSetExtension
+			LDI
+			DJNZ 	cleanSaveNameLoop
+cleanSaveSetExtension	LD 	HL, SaveLoadExtension
+			LD 	BC, 5
+			LDIR
+			RET
 
+; **** Sets the default disk active
+setDefaultDisk		XOR	A  
+                        RST     $08 
+                        DB      M_GETSETDRV
+                        RET
+			
+
+; *** Divides A by 10 and returns the remainder in A and the quotient in D^***
 DivByTen		LD 	D, A			; Does A / 10
 			LD 	E, 10			; At this point do H / 10
-			LD B, 8
-			XOR A				; A = 0, Carry Flag = 0
+			LD 	B, 8
+			XOR 	A				; A = 0, Carry Flag = 0
 DivByTenLoop		SLA	D
 			RLA			
 			CP	E		
 			JR	C, DivByTenNoSub
 			SUB	E		
 			INC	D		
-DivByTenNoSub		djnz DivByTenLoop
+DivByTenNoSub		djnz 	DivByTenLoop
 			RET				;A= remainder, D = quotient
 
-Filename		DB "000.DRG",0
-DRGNumLines		DB 0	
+Filename		DB 	"000.DRG",0
+DRGNumLines		DB 	0
+SaveLoadFilename	DB 	"PLACEHOL.SAV",0
+SaveLoadExtension	DB 	".SAV", 0
 
 
