@@ -283,7 +283,7 @@ DivByTenLoop		SLA	D
 DivByTenNoSub		djnz 	DivByTenLoop
 			RET				;A= remainder, D = quotient
 
-Filename		DB 	"000.DRG",0
+Filename		DB 	"000.ZXS",0
 DRGNumLines		DB 	0
 SaveLoadFilename	DB 	"PLACEHOL.SAV",0
 SaveLoadExtension	DB 	".SAV", 0
