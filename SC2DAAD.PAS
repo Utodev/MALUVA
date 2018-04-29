@@ -9,12 +9,15 @@ CONST TWO_KILOBYTES = 2048;
 TYPE cpcHeaderType =  ARRAY[0..127] of Byte;
 
 PROCEDURE Syntax();
+VAR  BinaryName : String;
 BEGIN
+	BinaryName := ExtractFileName(ParamStr(0));
 	Writeln();
-	WriteLn('SYNTAX: SC2DAAD <target> <inputFilename> <outputFilename> <lines>');
+	WriteLn('SYNTAX: ',BinaryName,' <target> <inputFilename> <outputFilename> <lines>');
 	Writeln();
-	Writeln('Target may be cpc, msx or zx');
-	WriteLn('Type SC2DAAD <target> HELP to get specific help per each platform.');
+	Writeln('Target may be cpc, msx or zx.');
+	Writeln();
+	WriteLn('Type "',BinaryName,' <target> HELP" to get specific help per each platform.');
 	Writeln();
 	Halt(1);
 END;
@@ -22,26 +25,34 @@ END;
 
 PROCEDURE Help(target: string);
 BEGIN
-    IF target='cpc'	THEN
+    IF uppercase(target)='CPC'	THEN
     BEGIN
-		WriteLn('For CPC you will requiere a CPC .SCR file together with a .PAL file for the palette, both with same base name.');
-		WriteLn('You should specify the number of lines from top you want to include in the image. Number of lines should be a multiple of 8 and less or equal to 96.');
-		WriteLn('The file created would already have a CPC header.');
-		WriteLn('Note: although max lines is 96, having a 200 lines picture (full screen) is allowed. Just can''t create an image in the 97-199 range');
+		WriteLn('For CPC you will requiere a CPC .SCR file together with a .PAL file for the palette, both with same base name. You can obtain such files using cpcConvImg application or any other application who can provide such format (http://www.cpcwiki.eu/index.php/Format:Advanced_OCP_Art_Studio_File_Formats)');
+		Writeln();
+		WriteLn('You should specify the number of lines from top of screen you want to include in the image. Number of lines should be a multiple of 8 and less or equal to 96.');
+		Writeln();
+		WriteLn('The file created would already have a CPC header. The output file should have .CPC extension, and have three digits for the number, i.e.: 001.CPC, 012.CPC, 128.CPC');
+		Writeln();
+		WriteLn('Note: although max line number is 96, having a 200 lines picture (full screen) is allowed.');
 		Halt(0);
 	END;
-    IF target='zx'	THEN
+    IF uppercase(target)='ZX'	THEN
     BEGIN
-		WriteLn('For Spectrum you will requiere a Spectrum .SCR file (6912 bytes).');
+		WriteLn('For Spectrum you will requiere a Spectrum .SCR file (6912 bytes), a dump of Spectrum screen area.');
+		Writeln();
 		WriteLn('You should specify the number of lines from top you want to include in the image. Number of lines should be a multiple of 8.');
+		Writeln();
+		WriteLn('The output file should have .ZXS extension, and have three digits for the number, i.e.: 001.ZXS, 012.ZXS, 128.ZXS');
+		Writeln();
 		WriteLn('The file created would not have a +3DOS header, you will have to add it IF you use the graphic in a Spectrum +3 environment. Don''t add a header IF you are going to use the graphic under ESXDOS or compatible.');
 		Halt(0);
 	END;
-    IF target='msx'	THEN
+    IF uppercase(target)='MSX'	THEN
     BEGIN
+    	Halt(0);
 	END;
 	Writeln('Unknown target.');
-	Halt(1);
+	Syntax();
 END;	
 
 
@@ -296,9 +307,12 @@ VAR target, inputFilename, outputFilename: string;
 	LinesString: string;
 
 BEGIN
-	IF ParamCount()<>4 THEN Syntax();
+	IF ParamCount()<2 THEN Syntax();
 	target := ParamStr(1);
 	inputFilename := ParamStr(2);
+
+	IF (ParamCount()<4) AND (uppercase(inputFilename)<>'HELP') THEN Syntax();
+
 	outputFilename := ParamStr(3);
 
 	// Check param Errors
