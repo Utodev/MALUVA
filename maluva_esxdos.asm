@@ -208,17 +208,6 @@ OpenMode                LD      B, FA_READ		; May be modified by FA_CREATE_AL ab
                         JR      C, diskFailure
                         LD 	(SavegameHandle+1), A
 ; --- read or write file
-/*FALTA: si falla al abrir, leer o escribir mostrar SYSMESS.Tambien si al leer lee menos de 512
-/56
-Unidad no preparada. Pulsa una tecla para volver a intentarlo.
-/57
-Error de entrada/salida.
-/58
-El disco o el directorio puede estar lleno.
-/59
-Nombre de fichero no v lido.
-	*/
-
 
 			POP	IX			; Gets IX value back from stack, then push again
 			PUSH 	IX
