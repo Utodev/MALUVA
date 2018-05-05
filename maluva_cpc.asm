@@ -68,24 +68,22 @@ LoadPicture		LD 	A, D		; Restore first parameter
 			LD A, 201 				; RET
 			LD (TXT_OUTPUT),A
 
-			;LD 	A, $00
-			;CALL 	BIOS_SET_MESSAGE			; Silences as A!=0 (for sure, as it is at least the ascii code of '0')
 
 ; --- open file and reads CPC header, leaving file pointer just after
                         LD 	B, 7			; Filename length
                         LD 	HL, Filename		; Points to file name
-                        LD 	DE, BUFFER2K_ADDR	; Load file header at VRAM address
-                        CALL 	CAS_IN_OPEN			
+                        LD 	DE, BUFFER2K_ADDR	
+                        CALL 	CAS_IN_OPEN		; Open file
                         JP 	NC, cleanExit
                         JP 	Z, cleanExit
 
-                        LD 	DE, -4
-                        ADD 	HL, DE
-                        PUSH 	HL
-                        POP 	IY
+                        LD 	DE, -4			; after opening file, DE points to ASMDOS header, but 4 bytes below the header
+                        ADD 	HL, DE			; the address of the 2K buffer prepared for reading is stored, and 2 below
+                        PUSH 	HL			; the header it's the current reading pointer when reading with CAS_IN_CHAR
+                        POP 	IY			; We store header-4 address ay IY for later use
 
 
-; Check if it is full picture to load it in a different way, a full screen picture is $3E84 bytes long (16.388, 16.384 data, 4 for palette)
+; Check if it is full picture to load it in a different way, a full screen picture is 16384  bytes long (and includes the palette in the last 4 bytes, over the "spare" zone in any CPC picture)
                         LD 	A, (IY+28)			
                         OR 	A
                         JR 	NZ, LoadPartialPicture 
@@ -94,36 +92,44 @@ LoadPicture		LD 	A, D		; Restore first parameter
                         JP 	NZ, LoadPartialPicture
 
 ; Load Whole graphic and palette
-LoadFullPicture		LD	HL, VRAM_ADDR + 16384 - 8  ; Point to spare zone, plenty of zeros. Blan Palette
+LoadFullPicture		LD	HL, VRAM_ADDR + 16384 - 8  ; Point to spare zone, plenty of zeros. Blank Palette
 			CALL 	SetPalette
-			LD 	HL, VRAM_ADDR		   ;  Read all picture date in screen
+			LD 	HL, VRAM_ADDR		   ;  Read all picture data in screen
 			CALL 	CAS_IN_DIRECT
 			LD 	HL, VRAM_ADDR + 16384 -4   ;  Palette fw colors have been loaded at the end
 			CALL    SetPalette
-			JR 	FileLoaded		; Finish but close file                        
+			JR 	FileLoaded		   ; Ok, let's go to exit procedure
+
+
+; Ok, this codebelow needs an explanation: when CPC reads char by char using CAS_IN_CHAR, it actually reads 2K of data on first CAS_IN_CHAR, and then every 
+; subsequent CAS_IN_CHAR reads from the buffer, until the buffer is over, and then the next CAS_IN_CHAR loads another 2K, etc. Despite of that, loading using 
+; CAS_IN_CHAR  is extremely slow, and specially in this case where we are really reading to then move to VRAM_ADDR, it's a big waste of time. So what we do? We 
+; are going to load the buffer using CAS_IN_CHAR, but then instead of reading character by character using CAS_IN_CHAR, we will use LDIR to copy data to VRAM_ADDR. 
+; How does AMSDOS then realizes when the buffer is over? Easy, some lines above we stored at IY the value of two pointers that AMSDOS keeps in RAM when a file is
+; opened, the first word value stores the address of the buffer, and the second word value, the address of the current reading position of that buffer, so to
+; force AMSDOS to load another 2K when we have not read them using CAS_IN_CHAR, we have just to modiy the pointer, and move it 2K above the start of the buffer
+; address, and at that moment, we call again CAS_IN_CHAR, which will realize the buffer is over, and load another 2K.
+
+; Apart of that, the CPC image files contain some padding, so every 2K part of the file contains an integer number of scanline data, that is no data that 
+; should be copied with LDIR, will go over the end of block of 2K. So for instance if a scanline of the image uses 0.8K, then two scanlines fit (1.6k), and the
+; remaining 0.4K is filled with zeroes in the file, so we read 2K, paint (LDIR) two scanlines, then skip to end of buffer, read another 2K, paint 2 scanlines, skip 
+; to en of buffer, etc.
+
 
 ; read file info
 LoadPartialPicture      CALL 	CAS_IN_CHAR		; Force loading first 2K buffer
-                        LD 	(ScansPer2kBuffer),A    ; Preserve number of blocks per 2KBuffer
-                        LD 	IXH, A 			; But keep it at IXH too for fast use
+                        LD 	(ScansPer2kBuffer),A    ; First byte in the file (after the header) contains the number of scanlines per 2KBuffer (as describe in previous comment)
+                        LD 	IXH, A 			; we also keep it at IXH too for fast use
                         
 ; read the palette	
-			LD 	HL, BUFFER2K_ADDR + 1	; Preserves the palette for later
-			LD 	DE, Palette
-			LDI
-			LDI
-			LDI
-			LDI
-
-			PUSH 	HL
-			LD 	HL, Palette
+			LD 	HL, BUFFER2K_ADDR + 1   ; Next 4 bytes are the palette
 			LD 	E, 4			; Set 4 colors palette
 			CALL 	SetPalette
-			POP 	HL
 
+			LD 	HL, BUFFER2K_ADDR + 5
                         LD 	C, (HL)
                         INC	HL
-                        LD 	B, (HL)			; BC Contains how many bytes to read per iteration
+                        LD 	B, (HL)			; BC Contains how many bytes there are per scanline
                         INC 	HL
 
                                      
@@ -135,11 +141,11 @@ LoadPartialPicture      CALL 	CAS_IN_CHAR		; Force loading first 2K buffer
 			LD 	DE, VRAM_ADDR		; Point to RAM addr
 			
 ReadFileLoop		PUSH 	BC
-			PUSH 	DE
-			LDIR
-			POP 	DE
+			PUSH 	DE			; Yes, you are thiking this can be made faster with LDI, or even with PUSH/POP, and you are right, but
+			LDIR				; the bottleneck is the disk reading, so improving this is not noticeable for users, and any other solution
+			POP 	DE			; will just require more RAM so it's not worth the effort. 
 			POP 	BC	
-			DEC 	IXH			; One scan less in the 2K block
+			DEC 	IXH			; One scanline less in the 2K block
 			JR 	Z, Next2KBlock
 ReadFileCont		PUSH 	HL
 			LD 	HL, $800		; Offset from one CPC line to the one inmediatly below
@@ -223,15 +229,6 @@ DivByTenLoop		SLA	D
 DivByTenNoSub		djnz 	DivByTenLoop
 			RET				;A= remainder, D = quotient
 
-; *** Clears the screen by filling with zeroes
-
-ClearScreen		XOR 	A
-			LD 	HL, VRAM_ADDR
-			LD 	(HL),A
-			LD 	DE, VRAM_ADDR + 1
-			LD 	BC, 16383
-			LDIR  
-			RET
 
 
 Filename		DB 	"000.CPC"
