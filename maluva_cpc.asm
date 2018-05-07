@@ -158,7 +158,7 @@ ReadFileCont		PUSH 	HL
 
 
 ; ---- Close file		
-FileLoaded		CALL CAS_IN_CLOSE
+FileLoaded		CALL 	CAS_IN_CLOSE
 	
 cleanExit		LD 	A, $CF			; restore original value (RST $8)
 			LD 	(TXT_OUTPUT),A
