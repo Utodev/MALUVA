@@ -73,8 +73,13 @@ END;
 
 PROCEDURE CopyBlock(VAR inFile, outFile:FILE; size:word);
 VAR buffer: ARRAY [0..$8000] OF byte;
+	Result : Word;
+	i :word;
 BEGIN
-	Blockread(inFile, Buffer, size);
+	Blockread(inFile, Buffer, size, Result);
+	if Result<Size THEN 
+	  FOR i := Result TO Size-1 DO
+	    buffer[i]:=0;
 	BlockWrite(outFile, Buffer, size)
 END;
 
@@ -134,7 +139,7 @@ VAR i, bytesToRead, current2KBuffercount: word;
 	 CPC FILE FORMAT IS (after the AMSDOS header):
 	 00    : scans per 2k buffer, 
 	 01-04 : palette used, first one is for background, second one for text ink
-	 05-06  :number of lines multiplied by 10
+	 05-06  :number of lines multiplied by 10, that is, number of bytes per scanline
 	 07-   : data as in a SCR file, but with less lines - or not.
 
 	 Exception: 200 lines graphic contains 16384 bytes, 16384 for data, and 4 for palette, but the palette is over the last 4 bytes of data, where
@@ -176,7 +181,7 @@ BEGIN
 	END; 
 	// Prepare Header
 	IF Lines=200 THEN FileSize := 16384
-				 ELSE FileSize := 7 + lines*80;
+				 ELSE FileSize := 7 + 2048 * (8 DIV (2048 DIV (lines * 10)));
 
 	FillChar(cpcHeader, 128, 0);
 	AUXSTR:='UTO DEV HCK';
