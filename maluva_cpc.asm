@@ -203,9 +203,9 @@ SetPaletteLoop 		LD 	B,(HL)
 Next2KBlock		LD 	HL, BUFFER2K_ADDR + TWO_KILOBYTES	; Set buffer pointer to end of buffer
 			LD 	(IY+2), L
 			LD 	(IY+3), H
-			LD 	HL, TWO_KILOBYTES
-			LD 	(IY+$17), 0			; Change the header so length is 2K
-			LD 	(IY+$18), 0
+			XOR 	A
+			LD 	(IY+$17), A			; Change the header so length is ok, what will load everything avaliable (equals 65536)
+			LD 	(IY+$18), A
 			CALL 	CAS_IN_CHAR			; force loading another 2K
 
 			LD 	A, (ScansPer2kBuffer)
