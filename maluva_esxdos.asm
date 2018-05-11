@@ -38,14 +38,14 @@ Start
 			LD 	A, (BC)		; Get second parameter (function number) on A
 
 			OR 	A
-			JR 	Z, LoadDRG
+			JR 	Z, LoadImg
 			CP 	1
 			JP 	Z, SaveGame
 			CP 	2
 			JP 	Z, LoadGame
 			JP 	cleanExit
 ; ---- Set the filename
-LoadDRG
+LoadImg
 			LD 	A, D		; Restore first parameter
 			CALL 	DivByTen
 			ADD 	'0'
@@ -82,7 +82,7 @@ LoadDRG
                         LD      D,A	
 
 ; --- read header
-                        LD 	IX, DRGNumLines
+                        LD 	IX, IMGNumLine
                         PUSH 	DE
                         PUSH 	BC
                         LD      BC, 1
@@ -90,7 +90,7 @@ LoadDRG
                         DB      F_READ     
                         POP 	BC
                         POP 	DE
-                        LD 	A, (DRGNumLines) ; A register contains number of lines now
+                        LD 	A, (IMGNumLine) ; A register contains number of lines now
                                             
 
 ; read data - for Spectrum we start by reading  as much thirds of screen as possible, in the first byte of file the number of lines appears, so if there is carry when comparing to 64,
@@ -153,7 +153,7 @@ drawLoop		LD 	A, D 		; file handle
 
 readAttr		XOR 	A
 			LD	H, A
-			LD 	A, (DRGNumLines)	; restore number of lines
+			LD 	A, (IMGNumLine)	; restore number of lines
 			LD 	L, A			; now HL = number of lines 
 			ADC 	HL, HL
 			ADC 	HL, HL			; Multiply by 4 (32 bytes of attributes per each 8 lines  = means 4 per line)
@@ -273,7 +273,7 @@ DivByTenNoSub		djnz 	DivByTenLoop
 			RET				;A= remainder, D = quotient
 
 Filename		DB 	"000.ZXS",0
-DRGNumLines		DB 	0
+IMGNumLine		DB 	0
 SaveLoadFilename	DB 	"PLACEHOL.SAV",0
 SaveLoadExtension	DB 	".SAV", 0
 
