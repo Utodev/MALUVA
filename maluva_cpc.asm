@@ -77,17 +77,17 @@ LoadPicture		LD 	A, D		; Restore first parameter
                         JP 	NC, cleanExit
                         JP 	Z, cleanExit
 
-                        LD 	DE, -4			; after opening file, DE points to ASMDOS header, but 4 bytes below the header
-                        ADD 	HL, DE			; the address of the 2K buffer prepared for reading is stored, and 2 below
-                        PUSH 	HL			; the header it's the current reading pointer when reading with CAS_IN_CHAR
-                        POP 	IY			; We store header-4 address ay IY for later use
+                        DEC	HL
+                        DEC 	HL			; after opening file, DE points to ASMDOS header, but 2 bytes below the header
+                        PUSH 	HL			; the header it's the current reading pointer when reading from buffer  with CAS_IN_CHAR
+                        POP 	IY			; We store header-2 address ay IY for later use
 
 
 ; Check if it is full picture to load it in a different way, a full screen picture is 16384  bytes long (and includes the palette in the last 4 bytes, over the "spare" zone in any CPC picture)
-                        LD 	A, (IY+28)			
+                        LD 	A, (IY+26)			
                         OR 	A
                         JR 	NZ, LoadPartialPicture 
-                        LD 	A, (IY+29)
+                        LD 	A, (IY+27)
                         CP 	$40
                         JP 	NZ, LoadPartialPicture
 
@@ -201,11 +201,11 @@ SetPaletteLoop 		LD 	B,(HL)
 ; ** Forces another 2K buffer to be loaded from disk and sets back IXH and HL registers to control that buffer 
 
 Next2KBlock		LD 	HL, BUFFER2K_ADDR + TWO_KILOBYTES	; Set buffer pointer to end of buffer
-			LD 	(IY+2), L
-			LD 	(IY+3), H
+			LD 	(IY), L
+			LD 	(IY+1), H
 			XOR 	A
-			LD 	(IY+$17), A			; Change the header so length is ok, what will load everything avaliable (equals 65536)
-			LD 	(IY+$18), A
+			LD 	(IY+$15), A			; Change the header so length is ok, what will load everything avaliable (equals 65536)
+			LD 	(IY+$16), A
 			CALL 	CAS_IN_CHAR			; force loading another 2K
 
 			LD 	A, (ScansPer2kBuffer)
