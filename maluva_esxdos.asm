@@ -155,8 +155,8 @@ readAttr		XOR 	A
 			LD	H, A
 			LD 	A, (IMGNumLine)	; restore number of lines
 			LD 	L, A			; now HL = number of lines 
-			ADC 	HL, HL
-			ADC 	HL, HL			; Multiply by 4 (32 bytes of attributes per each 8 lines  = means 4 per line)
+			ADD 	HL, HL
+			ADD 	HL, HL			; Multiply by 4 (32 bytes of attributes per each 8 lines  = means 4 per line)
 			PUSH 	HL
 			POP 	BC
 			LD 	IX, VRAM_ATTR_ADDR	; attributes VRAM
