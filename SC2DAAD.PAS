@@ -49,7 +49,13 @@ BEGIN
 	END;
     IF uppercase(target)='MSX'	THEN
     BEGIN
-    	Halt(0);
+		WriteLn('For MSX you will require a Spectrum .SC2 file (14343 bytes), a dump of MSX mode 2 screen area.');
+		Writeln();
+		WriteLn('You should specify the number of lines from top you want to include in the image. Number of lines should be a multiple of 8.');
+		Writeln();
+		WriteLn('The output file should have .MS2 (MSX mode 2) extension, and have three digits for the number, i.e.: 001.MS2, 012.MS2, 128.MS2');
+		Writeln();
+		Halt(0);
 	END;
 	Writeln('Unknown target.');
 	Syntax();
@@ -123,6 +129,30 @@ BEGIN
 	 Result := 0;
 	END; 
 END;
+
+PROCEDURE MSX(inputFilename, outputFilename: string; lines:word);
+(* SC2 format includes a 7 bytes header, followed by  6144 bytes for pixels and 6144 for attributes. Length must be 14343 bytes *)
+VAR	inFile, outFile: FILE;
+var linesByte  : byte;
+BEGIN
+	AssignFile(inFile, inputFilename);
+	AssignFile(outFile, outputFilename);
+	TRY
+	Reset(inFile, 1);
+	Rewrite(outFile,1);
+	EXCEPT
+		on E: Exception DO Error('File not found.' + E.Message);
+	END; 
+	linesByte := lines AND $FF;
+	BlockWrite(outFile, linesByte, 1);
+	if (FileSize(inFile)<>14343) THEN Error('Invalid file.');
+	Seek(inFile, 7); // Go to pixels position
+	CopyBlock(inFile, outFile, lines * 32);
+	Seek(inFile, $2007); // Go to attributes position
+	CopyBlock(inFile, outFile, lines * 32);
+	CloseFile(inFile);
+	CloseFile(outFile);
+END;	
 
 PROCEDURE CPC(inputFilename, outputFilename: string; lines:word;NumPaletteEntries:byte);
 VAR i, bytesToRead, current2KBuffercount: word;
