@@ -21,8 +21,13 @@
 			define FA_WRITE		$02
 			define FA_CREATE_AL	$0C
 
-			define VRAM_ADDR 	$4000 ; The video RAM address
-			define VRAM_ATTR_ADDR   VRAM_ADDR + $1800 ;  points to attributes zone in VRAM 
+			define VRAM_ADDR 	  $4000 ; The video RAM address
+			define VRAM_ATTR_ADDR     VRAM_ADDR + $1800 ;  points to attributes zone in VRAM 
+
+			define DAAD_READ_FILENAME $7056	; DAAD function to request a file name
+			define DAAD_SYSMESS 	  $6DE8 ; DAAD function to print a system message
+
+			define DAAD_FILENAME_ADDR $70B5 ; DAAD function where the file name read by DAAD_READ_FILENAME is stored
 
 
 ; ********************************************************************                        
@@ -192,7 +197,7 @@ SaveGame		LD  	A, FA_CREATE_AL
 
 DoReadOrWrite		
 			EI
-			CALL 	$7056  			; Ask for file name
+			CALL 	DAAD_READ_FILENAME	; Ask for file name
 			DI
 			CALL 	cleanSaveName		; Convert DAAD 10 filename into 8.3 filename
 
@@ -225,7 +230,7 @@ SavegameHandle		LD 	A, $FF			; That $FF will be modifed by code above
 			JR 	cleanExit	
 
 diskFailure		LD 	L, 57			; E/S error
-			CALL    $6DE8
+			CALL    DAAD_SYSMESS
 			JR 	cleanExit
 			
 
@@ -236,10 +241,10 @@ diskFailure		LD 	L, 57			; E/S error
 ; *******************************************************************
 
 ; *** Makes filename read by DAAD to be compliant with ESXDOS 8+3 filenames***
-cleanSaveName		LD 	HL, $70B5			; address of filename requested
+cleanSaveName		LD 	HL, DAAD_FILENAME_ADDR			; address of filename requested
 			LD 	BC, $08FF			; we will use LDI together with DJNZ, B will work for DJNZ but we set C to $FF
 			LD 	DE, SaveLoadFilename
-cleanSaveNameLoop	LD 	A, (HL)				; too to avoid LDI decrement of BC to affect B
+cleanSaveNameLoop	LD 	A, (HL)				; to avoid LDI decrement of BC to affect B
 			OR 	A
 			JR	Z, cleanSaveSetExtension
 			CP 	$20
