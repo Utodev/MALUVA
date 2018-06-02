@@ -81,13 +81,6 @@ loadImg                 LD      A, D
                         
 
 
-; --- Disable Screen
-                        LD      A, (RG1SAV)
-                        AND     $BF
-                        LD      (RG1SAV), A
-                        OUT     ($99),A
-                        LD      A, $81
-                        OUT     ($99),A
 
 
 ; --- Patch FCB so record size for reading is 1, and define where to read to when reading
@@ -108,21 +101,21 @@ loadImg                 LD      A, D
                         SRL     A
 
 
+; --- Clears Picture zone screen attributes
+                        PUSH    AF
+                        LD      DE, $2000
+                        call    ClearScreen
+                        POP     AF
+
+
 ; --- And load from file, pixels data first, then atributes
                         PUSH    AF                              ; Preserve A value
                         LD      DE, 0                           ; Points to VRAM  (pixel data)
                         CALL    CopyToVRAM
                         POP     AF
-                        LD      DE, 02000h                      ; Points to VRAM  (attributes data)
+                        LD      DE, $2000                      ; Points to VRAM  (attributes data)
                         CALL    CopyToVRAM
 
-; ----  Enable Screen
-                        LD      A, (RG1SAV)
-                        OR      $40
-                        LD      (RG1SAV), A
-                        OUT     ($99),A
-                        LD      A, $81
-                        OUT     ($99),A
 
 ; ----- Close file
                         CALL    closeFile
@@ -200,13 +193,13 @@ setFCBParams            LD      HL, 1                           ; SET read block
                         RET
 
 
+
 ; ---------------------------------------------------------------------------
 ; DE    Direccion destino en VRAM
 ; A     Lineas a copiar
 CopyToVRAM
-; VRAM address setup
                         PUSH    AF
-                        LD      A,E
+                        LD      A,E                             ; VRAM address setup    
                         OUT     ($99),A
                         LD      A, D
                         OR      $40
@@ -226,14 +219,40 @@ copyToVRAMLoop          PUSH    AF                              ;lines to load
 
                         LD      HL, VRAM_BUFFER
                         LD      C, $98
-                        LD      B, $FF
-                        OTIR                                    ; Copy 255 bytes
-                        OUTI                                    ; Copy one more byte, up to 256
-
+                        LD      B, 0
+                        OTIR                                    
 
                         POP     AF
                         DEC     A
                         JR      NZ, copyToVRAMLoop
+                        RET
+
+; ---------------------------------------------------------------------------
+; DE    Direccion destino en VRAM
+; A     Lineas a copiar
+ClearScreen
+                        PUSH    AF                              ; VRAM address setup
+                        LD      A,E
+                        OUT     ($99),A
+                        LD      A, D
+                        OR      $40
+                        OUT     ($99),A
+
+                        XOR     A                               ; Fill VRAM buffer with zeroes
+                        LD      HL, VRAM_BUFFER
+                        LD      (HL),A
+                        LD      DE, VRAM_BUFFER + 1
+                        LD      BC, $FF
+                        LDIR
+                        POP     AF
+
+
+ClearScreenLoop         LD      HL, VRAM_BUFFER
+                        LD      C, $98
+                        LD      B, 0
+                        OTIR                                    
+                        DEC     A
+                        JR      NZ, ClearScreenLoop
                         RET
 
 ;----------------------------------------------------------------------------
