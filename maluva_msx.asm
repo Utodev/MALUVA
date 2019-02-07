@@ -220,7 +220,12 @@ copyToVRAMLoop          PUSH    AF                              ;lines to load
                         LD      HL, VRAM_BUFFER
                         LD      C, $98
                         LD      B, 0
-                        OTIR                                    
+;IFNDEF MSX2
+copyToVRAMLoop2         OUTI                                    ; Minimum VRAM access timing for MSX1: 29 cycles
+                        JP      NZ, copyToVRAMLoop2
+;ELSE
+;                       OTIR                                    ; Minimum VRAM access timing for MSX2: 15 cycles
+;ENDIF
 
                         POP     AF
                         DEC     A
@@ -250,7 +255,12 @@ ClearScreen
 ClearScreenLoop         LD      HL, VRAM_BUFFER
                         LD      C, $98
                         LD      B, 0
-                        OTIR                                    
+;IFNDEF MSX2
+clearScreenLoop2        OUTI                                    ; Minimum VRAM access timing for MSX1: 29 cycles
+                        JP      NZ, clearScreenLoop2
+;ELSE
+;                       OTIR                                    ; Minimum VRAM access timing for MSX2: 15 cycles
+;ENDIF
                         DEC     A
                         JR      NZ, ClearScreenLoop
                         RET
