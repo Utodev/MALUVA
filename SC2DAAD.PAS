@@ -139,13 +139,17 @@ BEGIN
 	AssignFile(outFile, outputFilename);
 	TRY
 	Reset(inFile, 1);
-	Rewrite(outFile,1);
 	EXCEPT
 		on E: Exception DO Error('File not found.' + E.Message);
 	END; 
+	TRY
+	Rewrite(outFile, 1);
+	EXCEPT
+	 on E: Exception DO Error('Can''t open file for output.');
+	END; 
 	linesByte := lines AND $FF;
 	BlockWrite(outFile, linesByte, 1);
-	if (FileSize(inFile)<>14343) THEN Error('Invalid file.');
+	if (FileSize(inFile)<>14343) THEN Error('Invalid input file, size must be 14343 bytes.');
 	Seek(inFile, 7); // Go to pixels position
 	CopyBlock(inFile, outFile, lines * 32);
 	Seek(inFile, $2007); // Go to attributes position
@@ -181,6 +185,7 @@ BEGIN
 	palFileName := changeFileExt(inputFilename,'.pal');
 	AssignFile(inFile, palFileName);  
 	TRY
+
 		Reset(inFile, 1);
 		Seek(inFile, 3+128);
 		Blockread(inFile, Palette[0], 1);
@@ -191,23 +196,23 @@ BEGIN
 		Seek(inFile, 39+128);
 		Blockread(inFile, Palette[3], 1);
 	EXCEPT
-		on E: Exception DO Error('PAL file not found, the .PAL file for the image should be located at same folder than SCR file.' + E.Message);
+		on E: Exception DO Error('PAL file not found or not valid, the .PAL file for the image should be located at same folder than SCR file.' + E.Message);
 	END; 
 	CloseFile(inFile);
 
 	AssignFile(inFile, inputFilename);
 	TRY
-	Reset(inFile, 1);
-	Seek(inFile, 128); // Skip AMSDOS header
+		Reset(inFile, 1);
+		Seek(inFile, 128); // Skip AMSDOS header
 	EXCEPT
-	 on E: Exception DO Error('Invalid file.');
+	 	on E: Exception DO Error('Invalid CPC .SCR file.');
 	END; 
 
 	AssignFile(outFile, outputFilename);
 	TRY
-	Rewrite(outFile, 1);
+		Rewrite(outFile, 1);
 	EXCEPT
-	 on E: Exception DO Error('Invalid file.');
+		 on E: Exception DO Error('Can''t open file for output.');
 	END; 
 	// Prepare Header
 	IF Lines=200 THEN FileSize := 16384
@@ -265,11 +270,6 @@ BEGIN
 	CloseFile(outFile);
 END;
 
-PROCEDURE MSX(inputFilename, outputFilename: string; lines:byte);
-BEGIN
-END;
-
-
 
 PROCEDURE ZX(inputFilename, outputFilename: string; lines:byte);
 VAR i,rows, bytesToRead, bytesToSkip, attributesSize: word;
@@ -286,13 +286,14 @@ BEGIN
 	TRY
 	Reset(inFile, 1);
 	EXCEPT
-	 on E: Exception DO Error('Invalid file.');
+	 on E: Exception DO Error('Invalid ZX Spectrum SCR file.');
 	END; 
+	if (FileSize(inFile)<>16384) THEN Error('Invalid file. Size must be 6912 bytes');
 	AssignFile(outFile, outputFilename);
 	TRY
 	Rewrite(outFile, 1);
 	EXCEPT
-	 on E: Exception DO Error('Invalid file.');
+	 on E: Exception DO Error('Can''t open file for output.');
 	END; 
 
 	BlockWrite(outFile, lines, 1);
