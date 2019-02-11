@@ -140,12 +140,12 @@ BEGIN
 	TRY
 	Reset(inFile, 1);
 	EXCEPT
-		on E: Exception DO Error('File not found.' + E.Message);
+		on E: Exception DO Error('File not found:' + E.Message);
 	END; 
 	TRY
 	Rewrite(outFile, 1);
 	EXCEPT
-	 on E: Exception DO Error('Can''t open file for output.');
+	 on E: Exception DO Error('Can''t open file for output:' + E.message);
 	END; 
 	linesByte := lines AND $FF;
 	BlockWrite(outFile, linesByte, 1);
@@ -205,14 +205,14 @@ BEGIN
 		Reset(inFile, 1);
 		Seek(inFile, 128); // Skip AMSDOS header
 	EXCEPT
-	 	on E: Exception DO Error('Invalid CPC .SCR file.');
+	 	on E: Exception DO Error('Invalid CPC .SCR file:' + E.message);
 	END; 
 
 	AssignFile(outFile, outputFilename);
 	TRY
 		Rewrite(outFile, 1);
 	EXCEPT
-		 on E: Exception DO Error('Can''t open file for output.');
+		 on E: Exception DO Error('Can''t open file for output:' + E.message);
 	END; 
 	// Prepare Header
 	IF Lines=200 THEN FileSize := 16384
@@ -286,14 +286,14 @@ BEGIN
 	TRY
 	Reset(inFile, 1);
 	EXCEPT
-	 on E: Exception DO Error('Invalid ZX Spectrum SCR file.');
+	 on E: Exception DO Error('Invalid ZX Spectrum SCR file:' + E.message);
 	END; 
-	if (FileSize(inFile)<>16384) THEN Error('Invalid file. Size must be 6912 bytes');
+	if (FileSize(inFile)<>6912) THEN Error('Invalid file. Size must be 6912 bytes');
 	AssignFile(outFile, outputFilename);
 	TRY
 	Rewrite(outFile, 1);
 	EXCEPT
-	 on E: Exception DO Error('Can''t open file for output.');
+	 on E: Exception DO Error('Can''t open file for output:' + E.message);
 	END; 
 
 	BlockWrite(outFile, lines, 1);
@@ -368,7 +368,7 @@ BEGIN
 	TRY
 		lines := StrToInt(LinesString);
     EXCEPT
-        On E : EConvertError DO Error('Invalid number of lines');
+        On E : EConvertError DO Error('Invalid number of lines:' + E.message);
     END;
 
     IF ((target='zx') OR (target='msx')) AND (lines >192) THEN Error('Maximum bnumber of lines for MSX/ZX is 192');
