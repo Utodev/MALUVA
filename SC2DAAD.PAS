@@ -15,7 +15,7 @@ BEGIN
 	Writeln();
 	WriteLn('SYNTAX: ',BinaryName,' <target> <inputFilename> <outputFilename> <lines>');
 	Writeln();
-	Writeln('Target may be cpc, msx or zx.');
+	Writeln('Target may be c64, cpc, msx or zx.');
 	Writeln();
 	WriteLn('Type "',BinaryName,' <target> HELP" to get specific help per each platform.');
 	Writeln();
@@ -31,7 +31,7 @@ BEGIN
 		Writeln();
 		WriteLn('You should specify the number of lines from top of screen you want to include in the image. Number of lines should be a multiple of 8 and less or equal to 96.');
 		Writeln();
-		WriteLn('The file created would already have a CPC header. The output file should have .CPC extension, and have three digits for the number, i.e.: 001.CPC, 012.CPC, 128.CPC');
+		WriteLn('The file created would already have a CPC header. The output file should have .CPC extension, and have three digits for the number, i.e.: 001.CPC, 012.CPC, 118.CPC');
 		Writeln();
 		WriteLn('Note: although max line number is 96, having a 200 lines picture (full screen) is allowed.');
 		Halt(0);
@@ -42,7 +42,7 @@ BEGIN
 		Writeln();
 		WriteLn('You should specify the number of lines from top you want to include in the image. Number of lines should be a multiple of 8.');
 		Writeln();
-		WriteLn('The output file should have .ZXS extension, and have three digits for the number, i.e.: 001.ZXS, 012.ZXS, 128.ZXS');
+		WriteLn('The output file should have .ZXS extension, and have three digits for the number, i.e.: 001.ZXS, 012.ZXS, 118.ZXS');
 		Writeln();
 		WriteLn('The file created would not have a +3DOS header, you will have to add it IF you use the graphic in a Spectrum +3 environment. Don''t add a header IF you are going to use the graphic under ESXDOS or compatible.');
 		Halt(0);
@@ -53,7 +53,17 @@ BEGIN
 		Writeln();
 		WriteLn('You should specify the number of lines from top you want to include in the image. Number of lines should be a multiple of 8.');
 		Writeln();
-		WriteLn('The output file should have .MS2 (MSX mode 2) extension, and have three digits for the number, i.e.: 001.MS2, 012.MS2, 128.MS2');
+		WriteLn('The output file should have .MS2 (MSX mode 2) extension, and have three digits for the number, i.e.: 001.MS2, 012.MS2, 118.MS2');
+		Writeln();
+		Halt(0);
+	END;
+    IF uppercase(target)='C64'	THEN
+    BEGIN
+		WriteLn('For C64 you will require an uncompressed .KOA file (10003 bytes), a dump of C64 High Resolution mode.');
+		Writeln();
+		WriteLn('You should specify the number of lines from top you want to include in the image. Number of lines should be a multiple of 8.');
+		Writeln();
+		WriteLn('The output file should have .C64 extension, and have three digits for the number, i.e.: 001.C64, 012.C64, 118.C64');
 		Writeln();
 		Halt(0);
 	END;
@@ -185,7 +195,6 @@ BEGIN
 	palFileName := changeFileExt(inputFilename,'.pal');
 	AssignFile(inFile, palFileName);  
 	TRY
-
 		Reset(inFile, 1);
 		Seek(inFile, 3+128);
 		Blockread(inFile, Palette[0], 1);
@@ -335,6 +344,35 @@ BEGIN
 	CloseFile(outFile);
 END;
 
+PROCEDURE C64(inputFilename, outputFilename: string; lines:byte);
+VAR inFile, outFile: FILE;
+	(* 
+	 C64 FILE FORMAT IS:
+	 00    : number of lines
+	 01-   : first 40*lines bytes for pixel data, then 40*(lines/8) bytes for attributes data
+	*)
+BEGIN
+	AssignFile(inFile, inputFilename);
+	TRY
+	Reset(inFile, 1);
+	EXCEPT
+	 on E: Exception DO Error('Invalid C64 KOA file:' + E.message);
+	END; 
+	if (FileSize(inFile)<>10003) THEN Error('Invalid file. Size must be 10003 bytes');
+	AssignFile(outFile, outputFilename);
+	TRY
+	Rewrite(outFile, 1);
+	EXCEPT
+	 on E: Exception DO Error('Can''t open file for output:' + E.message);
+	END; 
+	BlockWrite(outFile, lines, 1);
+	Seek(inFile, 2); //Skip load address
+    CopyBlock(inFile, outFile, lines*40); // Copy pixels data
+    Seek(inFile, 9002); // Go to attribytes area
+    CopyBlock(inFile, outFile, (lines div 8)*40); // attributes data
+	CloseFile(inFile);
+	CloseFile(outFile);
+END;
 
 
 VAR target, inputFilename, outputFilename: string;
@@ -344,7 +382,7 @@ VAR target, inputFilename, outputFilename: string;
 
 BEGIN
 	IF ParamCount()<2 THEN Syntax();
-	target := ParamStr(1);
+	target := uppercase(ParamStr(1));
 	inputFilename := ParamStr(2);
 
 	IF (ParamCount()<4) AND (uppercase(inputFilename)<>'HELP') THEN Syntax();
@@ -353,7 +391,7 @@ BEGIN
 
 	// Check param Errors
 
-    IF (target<>'cpc') AND (target<>'zx') AND (target<>'msx') THEN Error('Invalid target.');
+    IF (target<>'CPC') AND (target<>'ZX') AND (target<>'MSX') AND (target<>'C64') THEN Error('Invalid target.');
 
     IF (uppercase(inputFilename) = 'HELP' ) THEN Help(target);	
 
@@ -371,18 +409,20 @@ BEGIN
         On E : EConvertError DO Error('Invalid number of lines:' + E.message);
     END;
 
-    IF ((target='zx') OR (target='msx')) AND (lines >192) THEN Error('Maximum bnumber of lines for MSX/ZX is 192');
-    IF (target='cpc') AND (lines >96) AND (lines <>200) THEN Error('Maximum number of lines for CPC is 96, althought you can choose full screen with 200 lines');
+    IF ((target='ZX') OR (target='MSX')) AND (lines >192) THEN Error('Maximum number of lines for MSX/ZX is 192');
+    IF (target='CPC') AND (lines >96) AND (lines <>200) THEN Error('Maximum number of lines for CPC is 96, althought you can choose full screen with 200 lines');
+    if (target='C64') AND (lines>200) THEN Error('Maximum number of lines for C64 is 200');
 
-    IF ((lines MOD 8) <> 0) THEN Error('Number of lines must be a multiple of 8');
+    IF  ((lines MOD 8) <> 0) THEN Error('Number of lines must be a multiple of 8');
 
     IF (NOT FileExists(inputFilename)) THEN Error('File not found');
 
     // Let's do it
 
-    IF target = 'zx' THEN ZX(inputFilename, outputFilename, lines) 
-    ELSE IF target = 'cpc' THEN CPC(inputFilename, outputFilename, lines, NumPaletteEntries) 
-    ELSE IF target = 'msx' THEN MSX(inputFilename, outputFilename, lines);
+    IF target = 'ZX' THEN ZX(inputFilename, outputFilename, lines) 
+    ELSE IF target = 'CPC' THEN CPC(inputFilename, outputFilename, lines, NumPaletteEntries) 
+    ELSE IF target = 'MSX' THEN MSX(inputFilename, outputFilename, lines)
+    ELSE IF target = 'C64' THEN C64(inputFilename, outputFilename, lines);
 
 END.
 
