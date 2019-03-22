@@ -1,11 +1,11 @@
+
 ; MALUVA (C) 2018 Uto
 ; MIT License applies, see LICENSE file
 ; TO BE COMPILED WITH SJASMPLUS
-; Thanks to Boriel for his 8 bits division code in ZX-Basic, DivByTen function is based on his code
+; Thanks to Lasse at the lemon64 forums for his invaluable help
 
 ; Please notice this is my first ever code usin the 65xx assembler. I have no previous experience so
-; I haven't worked too much in optimization, except for the most important bottleneck in the code, that
-; is, the image loading from disk part
+; I haven't worked too much in optimization
 
 
 *       = $38BC
@@ -15,17 +15,18 @@
 ; *******************************************************************
 
 			
-					KERNAL_SETLFS   = $FFBA
-					KERNAL_SETNAM   = $FFBD 
-					KERNAL_OPEN     = $FFC0
-					KERNAL_CLRCHN   = $FFCC
-					KERNAL_CHKIN    = $FFC6
-					KERNAL_CLOSE    = $FFC3
-					KERNAL_CHRIN    = $FFCF
-					KERNAL_READST	= $FFB7     
+					KERNAL_SETLFS    = $FFBA
+					KERNAL_SETNAM    = $FFBD 
+					KERNAL_OPEN      = $FFC0
+					KERNAL_CLRCHN    = $FFCC
+					KERNAL_CHKIN     = $FFC6
+					KERNAL_CLOSE     = $FFC3
+					KERNAL_CHRIN     = $FFCF
+					KERNAL_READST	 = $FFB7     
 
-					VIDEORAM_PIXELS = $E000
-					VIDEORAM_ATTRS  = $CC00
+					VIDEORAM_PIXELS  = $E000
+					VIDEORAM_ATTRS   = $CC00
+					BACKGROUND_COLOR = $D021
 
 
 
@@ -35,7 +36,10 @@
 
 ; Extern call will bring first parameter in A register and second parameter in X register
 
-Start				SEI 						; Disable interrupt
+Start				PHA							; Preserve A, X, Y
+					STX RegistroX
+					STY RegistroY
+					SEI 						; Disable interrupt
 					STA     Registro1
 					TXA
 					LDX     Registro1            ; swap X and A 
@@ -49,8 +53,8 @@ Start				SEI 						; Disable interrupt
 
 
 
-LoadGame			RTS
-SaveGame			RTS
+LoadGame			JMP 	CleanExit
+SaveGame			JMP 	CleanExit
 
 ; ---- Set the filename
 LoadImg				TXA 						; Move first parameter (image number) to A
@@ -68,9 +72,7 @@ LoadImg				TXA 						; Move first parameter (image number) to A
 					ADC 	#'0'
 					STA     Filename
 
-
-
-					LDA #$05
+OpenImgFile			LDA #$05
         			LDX #<Filename
         			LDY #>Filename
         			JSR KERNAL_SETNAM
@@ -83,80 +85,96 @@ Setlfsskip   		LDY #$00      			; not $01 means: load to address stored in file
         			JSR KERNAL_OPEN 		; open file
         			BCS  CleanExit			; On Carry, error
 
-					; ???? check drive error channel here to test for
-        			; ???? FILE NOT FOUND error etc.
-
 
         			LDX #$02				; Use file #2 for input
         			JSR KERNAL_CHKIN		; Set input to file
 
- 					LDA #<VIDEORAM_PIXELS
-        			STA $AE
-        			LDA #>VIDEORAM_PIXELS
-        			STA $AF
-
-
-        			JSR KERNAL_READST
+					JSR KERNAL_READST
         			BNE Eof      			; either EOF or read error
-					JSR KERNAL_CHRIN		; Read number of lines from file
-        			STA Registro1       	; number of lines
-        			STA Registro3       	; preserve number of lines for later 
+					JSR KERNAL_CHRIN		; Read number of lines
+					
 
-ClearScreen			; Pending
 
-LoadPixels
-LineLoop   			LDA #40 				; Bytes per line, number of columns
-        			STA Registro2       	; Preserve at Reg2
-        			
-ColLoop   			JSR KERNAL_READST		; Read file status
-        			BNE Eof      			; either EOF or read error, leave
-					JSR KERNAL_CHRIN    	; Read a char, value returned in RegA, RegY modified
-					LDY #$00
-        			STA ($AE),Y   			; Paint pixels read
-  					INC $AE 				;  Increase pointer LSB
-        			BNE DoNotIncMSB              
-        			INC $AF                 ; Increase pointer MSB
-DoNotIncMSB			DEC Registro2           ; Decrement columns left
-        			BNE ColLoop             ; If more columns iterate over columns
-        			DEC Registro1           ; Decrement number of lines
-        			BNE LineLoop            ; If more lines, lineloop
-
-JMP Eof
-LoadAttrs
+ClearScr           TAX                     ; Move number of lines to X
 					LDA #<VIDEORAM_ATTRS
         			STA $AE
         			LDA #>VIDEORAM_ATTRS
         			STA $AF
+					LDY #0
 
-LineLoopAttr		LDA Registro3
-					ROR
-					ROR
-					ROR 					; Div by 8
+ClrOuterLoop		LDA #40
 					STA Registro1
-					LDA #40 				; Bytes per line, number of columns
-        			STA Registro2       	; Preserve at Reg2
-        			
-ColLoopAttr			JSR KERNAL_READST		; Read file status
-        			BNE Eof      			; either EOF or read error, leave
-					JSR KERNAL_CHRIN    	; Read a char, value returned in RegA, RegY modified
-					LDY #$00
-        			STA ($AE),Y   			; Paint pixels read
+					LDA #0
+					
+ClrInnerLoop		STA	($AE),Y	  			; Store value in RAM
   					INC $AE 				;  Increase pointer LSB
-        			BNE DoNotIncMSBAttr              
+        			BNE ClrDoNotIncMSBAttr              
         			INC $AF                 ; Increase pointer MSB
-DoNotIncMSBAttr		DEC Registro2           ; Decrement columns left
-        			BNE ColLoopAttr         ; If more columns iterate over columns
-        			DEC Registro1           ; Decrement number of lines
-        			BNE LineLoopAttr        ; If more lines, lineloop
+ClrDoNotIncMSBAttr  DEC Registro1            					
+					BNE ClrInnerLoop
+					DEX
+					BNE ClrOuterLoop
+				
 
+LoadPixels			LDA #<VIDEORAM_PIXELS
+        			STA $AE
+        			LDA #>VIDEORAM_PIXELS
+        			STA $AF
+					JSR ReadCompressedBlock
+
+LoadAttrs			LDA #<VIDEORAM_ATTRS
+        			STA $AE
+        			LDA #>VIDEORAM_ATTRS
+        			STA $AF
+					JSR ReadCompressedBlock
 
 Eof        			LDA #$02
         			JSR KERNAL_CLOSE  		; close file
         			JSR KERNAL_CLRCHN 		; restore input to default channel (keyboard)
 
-CleanExit 			CLI
+CleanExit 			LDY RegistroY			; Restore original X,Y,A values and return
+					LDX RegistroX
+					PLA		
+					CLI
 					RTS
 
+
+ReadCompressedBlock JSR KERNAL_READST
+        			BNE Eof      			; either EOF or read error
+					JSR KERNAL_CHRIN		; Read repeat value
+					STA CompressedCMP+1     ; Save repeat Value self-modifying the code
+
+
+CompressedLoop		JSR KERNAL_READST		; Read file status
+        			BNE Eof      			; either EOF or read error, leave
+					JSR KERNAL_CHRIN    	; Read value
+CompressedCMP		CMP #0					; This #0 value is replaced above with the "repeat follows" byte. If found two bytes follow (repeats, value)
+					BNE CompressNoRep
+					JSR KERNAL_READST		; Read file status
+        			BNE Eof      			; either EOF or read error, leave
+					JSR KERNAL_CHRIN    	; Read number of repeats
+					CMP #0        			; if zero repeats, it's end of block
+					BNE CompresRep
+					RTS						; End of block found
+
+CompresRep          STA Registro1           ; Preserve repeats
+					JSR KERNAL_READST		; Read file status
+        			BNE Eof      			; either EOF or read error, leave
+					JSR KERNAL_CHRIN    	; Read value to repeat
+					LDX Registro1           ; Restore number of repeats
+					JMP RepeatLoop
+
+
+CompressNoRep		LDX #1					; If not repeated, value is repeated just once
+
+RepeatLoop 			LDY #0					
+					STA	($AE),Y				; Store value in RAM
+  					INC $AE 				;  Increase pointer LSB
+        			BNE DoNotIncMSBAttr              
+        			INC $AF                 ; Increase pointer MSB
+DoNotIncMSBAttr		DEX 
+					BNE RepeatLoop
+					JMP CompressedLoop
 
 
 
@@ -172,11 +190,11 @@ CleanExit 			CLI
 ; picture loading, but the disk access, it has been considered optimizing it it's not worth the
 ; effort, unless it can be done to reduce memory used
 DivByTen    		LDX 	#$00
- 					STX 	Registro2
+ 					STX 	Registro1
 DivByTenLoop		SEC
 					SBC 	#$0A
 					BMI     DivByTenEnd
-DivByTenCont 		INC 	Registro2
+DivByTenCont 		INC 	Registro1
 					JMP 	DivByTenLoop
 DivByTenEnd 		CLC
 					ADC     #$0A
@@ -188,9 +206,11 @@ SaveLoadFilename	.text 	'PLACEHOL.SAV'
 SaveLoadExtension	.text 	'.SAV'
 
 
-; ------------------------------------ Additional memory addresses used as CPU registers 
+; ------------------------------------ Additional memory addresses used as CPU registers
 Registro1			.byte 0
 Registro2			.byte 0
-Registro3			.byte 0
+; ------------------------------------ variables to preserve registers X and Y while extern is running
+RegistroY			.byte 0			
+RegistroX			.byte 0
 
 
