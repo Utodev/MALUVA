@@ -5,13 +5,17 @@ PROGRAM SC2DRG;
 USES sysutils;
 
 CONST TWO_KILOBYTES = 2048;
+	  VERSION = '0.3';
+
 
 TYPE cpcHeaderType =  ARRAY[0..127] of Byte;
 
 PROCEDURE Syntax();
 VAR  BinaryName : String;
 BEGIN
-	BinaryName := ExtractFileName(ParamStr(0));
+	BinaryName := ChangeFileExt(ExtractFileName(ParamStr(0)),'');
+	Writeln();
+	Writeln(BinaryName,' ',VERSION);
 	Writeln();
 	WriteLn('SYNTAX: ',BinaryName,' <target> <inputFilename> <outputFilename> <lines>');
 	Writeln();
@@ -59,11 +63,11 @@ BEGIN
 	END;
     IF uppercase(target)='C64'	THEN
     BEGIN
-		WriteLn('For C64 you will require an uncompressed .KOA file (10003 bytes), a dump of C64 High Resolution mode.');
+		WriteLn('For C64 you will require an Art Studio .ART file (90002 bytes), a dump of C64 High Resolution mode.');
 		Writeln();
 		WriteLn('You should specify the number of lines from top you want to include in the image. Number of lines should be a multiple of 8.');
 		Writeln();
-		WriteLn('The output file should have .C64 extension, and have three digits for the number, i.e.: 001.C64, 012.C64, 118.C64');
+		WriteLn('The output file should have .64 extension, and have three digits for the number, i.e.: 001.64, 012.64, 118.64');
 		Writeln();
 		Halt(0);
 	END;
@@ -344,12 +348,82 @@ BEGIN
 	CloseFile(outFile);
 END;
 
+
+PROCEDURE WriteRLECompresssion(var outFile: FILE; Buffer: Pointer ;Size: Word);
+VAR Counter : ARRAY [0..255] of Word;
+	i,j : Word;
+	MinValue: Word;
+	MinValueIndex : Byte;
+	PreviousValue, Value : Byte;
+	PreviousValueCount : Byte;
+BEGIN
+	// Zero counters
+	FOR i := 0 to 255 DO Counter[i]:=0;
+
+    // Count how much times each byte value is repeated in the buffer
+	FOR i := 0 to Size - 1 DO
+	  Counter[Byte((Buffer+i)^)] := Counter[Byte((Buffer+i)^)] + 1;
+
+	 // Determine which is the value repeated the less. We will use that value as mark of compression, so if a value is repeated 6 times, we will
+	 // save <mark of compression> 6 <value>. This also means if mark of compression value appears it will allways have to be written as compressed data,
+	 // even if it only appears once. 
+	 MinValue := 65535;
+	 MinValueIndex := 0;
+	 FOR i := 0 to 255 DO
+	  IF Counter[i]<MinValue THEN
+	  BEGIN
+	   MinValue := Counter[i];
+	   MinValueIndex := i;
+	  END;
+
+
+	BlockWrite(outFile, MinValueIndex, 1); // Set the "repeat" prefix
+	// Ok, let's compress now
+	PreviousValue := Byte(Buffer^);
+	PreviousValueCount := 1;
+	i := 1;
+	WHILE i<=Size DO
+	BEGIN
+	// In the normal cycle we will go for the next value, in the last cycle we have already read all data so we enter a fake value different than previous one 
+	// to make sure the remaining data is dumped to disk after that.
+	if (i<>Size) THEN Value := Byte((Buffer+i)^)  ELSE  Value := (PreviousValueCount+1) MOD 256;
+
+	 IF ((Value<>PreviousValue) OR (PreviousValueCount = 255))  THEN // Si cambia de valor o ya llevamos 255 repeticiones
+	 BEGIN
+	   IF (PreviousValueCount>3) OR (PreviousValue=MinValueIndex) THEN // if more than 3 times repeated, or previous value is mark of compression, let's compress
+	   BEGIN
+	    BlockWrite(outFile, MinValueIndex, 1); // Mark of compression
+	    BlockWrite(outFile, PreviousValueCount, 1); // Times the value appears
+	    BlockWrite(outFile, PreviousValue, 1); // value
+	   END
+	   ELSE FOR J:= 1 TO PreviousValueCount DO 
+		 BEGIN
+		 	BlockWrite(outFile, PreviousValue, 1); // if less than 3 times, we dump the value 1, 2 or 3 times, unless the value is mark of compression
+		 END;
+	   PreviousValue := Value;
+	   PreviousValueCount := 1;
+	 END 
+	 ELSE PreviousValueCount := PreviousValueCount + 1;
+
+	 i:=i+1;
+	END;
+	// Finally we dump a mark of compression with zero times repeat, what is a mark of end of data
+    BlockWrite(outFile, MinValueIndex, 1); // Mark of compression
+    PreviousValueCount := 0;
+    BlockWrite(outFile, PreviousValueCount, 1); // Mark of compression
+END;
+
 PROCEDURE C64(inputFilename, outputFilename: string; lines:byte);
 VAR inFile, outFile: FILE;
+		Aux : byte;
+		DataBuffer : pointer;
 	(* 
 	 C64 FILE FORMAT IS:
-	 00    : number of lines
-	 01-   : first 40*lines bytes for pixel data, then 40*(lines/8) bytes for attributes data
+	 00    : number of lines div 8
+	 01	   : byte which is used to show repeats in RLE encoding
+	 02-   : RLE encoded compressed bytes for the screen pixels
+	 nn-   : byte which is used to show repeats in attributes for RLE encoding
+	 nn+1-   : RLE encoded attributes
 	*)
 BEGIN
 	AssignFile(inFile, inputFilename);
@@ -358,18 +432,28 @@ BEGIN
 	EXCEPT
 	 on E: Exception DO Error('Invalid C64 KOA file:' + E.message);
 	END; 
-	if (FileSize(inFile)<>10003) THEN Error('Invalid file. Size must be 10003 bytes');
+	if (FileSize(inFile)<>9002) THEN Error('Invalid file. File size must be 9002 bytes (Art Studio HiRes .art file).');
 	AssignFile(outFile, outputFilename);
 	TRY
 	Rewrite(outFile, 1);
 	EXCEPT
 	 on E: Exception DO Error('Can''t open file for output:' + E.message);
 	END; 
-	BlockWrite(outFile, lines, 1);
-	Seek(inFile, 2); //Skip load address
-    CopyBlock(inFile, outFile, lines*40); // Copy pixels data
-    Seek(inFile, 9002); // Go to attribytes area
-    CopyBlock(inFile, outFile, (lines div 8)*40); // attributes data
+	
+	Aux := lines div 8;
+	BlockWrite(outFile,Aux,1); // Number of lines divided by 8
+	
+	GetMem(DataBuffer, lines*40);
+
+	Seek(inFile, 2); //Go bitmap area
+	BlockRead(inFile, DataBuffer^, lines* 40);
+	WriteRLECompresssion(outFile, DataBuffer, lines * 40);
+
+	Seek(inFile, 8002); // Go to attribytes area
+  BlockRead(inFile, DataBuffer^, (lines div 8)*40);
+  WriteRLECompresssion(outFile, DataBuffer, (lines div 8)*40);
+
+
 	CloseFile(inFile);
 	CloseFile(outFile);
 END;
