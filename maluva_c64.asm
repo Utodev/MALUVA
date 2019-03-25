@@ -43,18 +43,11 @@ Start				PHA							; Preserve A, X, Y
 					STA     Registro1
 					TXA
 					LDX     Registro1            ; swap X and A 
-					CMP 	#$00
-					BEQ 	LoadImg
-					CMP 	#$01
-					BEQ 	SaveGame
-					CMP 	#$02
-					BEQ 	LoadGame
+					CMP 	#0
+					BEQ		LoadImg
 					JMP		CleanExit
 
 
-
-LoadGame			JMP 	CleanExit
-SaveGame			JMP 	CleanExit
 
 ; ---- Set the filename
 LoadImg				TXA 						; Move first parameter (image number) to A
@@ -72,48 +65,53 @@ LoadImg				TXA 						; Move first parameter (image number) to A
 					ADC 	#'0'
 					STA     Filename
 
-OpenImgFile			LDA #$05
+OpenImgFile			LDA #0
+					STA SecondaryAddress+1  ; SETLFS for open
+					LDA #$05
         			LDX #<Filename
         			LDY #>Filename
-        			JSR KERNAL_SETNAM
-        			LDA #$02				; Logical number
-        			LDX $BA       			; last used device number
-        			BNE Setlfsskip
-        			LDX #$08      			; default to device 8
-Setlfsskip   		LDY #$00      			; not $01 means: load to address stored in file
-        			JSR KERNAL_SETLFS
-        			JSR KERNAL_OPEN 		; open file
-        			BCS  CleanExit			; On Carry, error
+					JSR OpenFile
+					BCS CleanExit 			; If carry set, error
 
-
-        			LDX #$02				; Use file #2 for input
-        			JSR KERNAL_CHKIN		; Set input to file
 
 					JSR KERNAL_READST
         			BNE Eof      			; either EOF or read error
-					JSR KERNAL_CHRIN		; Read number of lines
-					
+					JSR KERNAL_CHRIN		; Read number of attribute lines
+					PHA						; Save number of attr lines
 
-
-ClearScr           TAX                     ; Move number of lines to X
-					LDA #<VIDEORAM_ATTRS
+; Clear the screen
+ClearAttr1          LDA #<VIDEORAM_ATTRS
         			STA $AE
         			LDA #>VIDEORAM_ATTRS
-        			STA $AF
-					LDY #0
+					STA $AF
+					PLA						; Restore number of attr  lines
+					PHA 					; And save it again
+        			TAX						; and move to X
+					LDY #$00				; Fill with 00 color
+					JSR ClearMem
 
-ClrOuterLoop		LDA #40
-					STA Registro1
-					LDA #0
-					
-ClrInnerLoop		STA	($AE),Y	  			; Store value in RAM
-  					INC $AE 				;  Increase pointer LSB
-        			BNE ClrDoNotIncMSBAttr              
-        			INC $AF                 ; Increase pointer MSB
-ClrDoNotIncMSBAttr  DEC Registro1            					
-					BNE ClrInnerLoop
-					DEX
-					BNE ClrOuterLoop
+
+ClearPixels         PLA						; Restore number of attr  lines
+					PHA						; amnd save it again
+					ROL
+					ROL
+					ROL						; multiply by 8 to get the real number of lines
+					TAX                     ; Move number of lines to X
+					LDA #<VIDEORAM_PIXELS
+        			STA $AE
+        			LDA #>VIDEORAM_PIXELS
+        			STA $AF
+					LDY #0					; fill with $00
+					JSR ClearMem
+
+ClearAttr2          LDA #<VIDEORAM_ATTRS
+        			STA $AE
+        			LDA #>VIDEORAM_ATTRS
+					STA $AF
+					PLA						; Restore number of attr  lines
+        			TAX						; and move to X
+					LDY #$B0				; Fill with B0 color
+					JSR ClearMem
 				
 
 LoadPixels			LDA #<VIDEORAM_PIXELS
@@ -128,9 +126,7 @@ LoadAttrs			LDA #<VIDEORAM_ATTRS
         			STA $AF
 					JSR ReadCompressedBlock
 
-Eof        			LDA #$02
-        			JSR KERNAL_CLOSE  		; close file
-        			JSR KERNAL_CLRCHN 		; restore input to default channel (keyboard)
+Eof        			JSR CloseFile
 
 CleanExit 			LDY RegistroY			; Restore original X,Y,A values and return
 					LDX RegistroX
@@ -139,6 +135,52 @@ CleanExit 			LDY RegistroY			; Restore original X,Y,A values and return
 					RTS
 
 
+; Close File - ID #2
+
+CloseFile			LDA #$02
+        			JSR KERNAL_CLOSE  		; close file
+        			JSR KERNAL_CLRCHN 		; restore input to default channel (keyboard)
+					RTS
+
+
+; Opens file whose name is at X,Y, and sets as file #2
+
+OpenFile 			JSR KERNAL_SETNAM
+        			LDA #$02				; Logical number
+        			LDX $BA       			; last used device number
+        			BNE SecondaryAddress
+        			LDX #$08      			; default to device 8
+SecondaryAddress	LDY #$00      			; not $01 means: load to address stored in file
+        			JSR KERNAL_SETLFS
+        			JSR KERNAL_OPEN 		; open file
+        			BCC  OpenFileCont
+					RTS                     ; On Carry, error
+
+OpenFileCont		LDX #$02				; Use file #2 for input/output
+        			JSR KERNAL_CHKIN		; Set input to file
+					RTS
+
+
+; Clears Mem ar ($AE), as many bytes as the value received in X multuplied by 40, and filling with the value at Y
+ClearMem			STY ClearValue+1
+					LDY #0
+
+ClrOuterLoop		LDA #40
+					STA Registro1
+ClearValue			LDA #00					; this value is modified above
+					
+ClrInnerLoop		STA	($AE),Y	  			; Store value in RAM
+  					INC $AE 				; Increase pointer LSB
+        			BNE ClrDoNotIncMSBAttr              
+        			INC $AF                 ; Increase pointer MSB
+ClrDoNotIncMSBAttr  DEC Registro1
+					BNE ClrInnerLoop
+					DEX
+					BNE ClrOuterLoop
+					RTS
+
+
+; Reads RLE compressed data from disk and stores it at ($AE) until a given value with zero repeats appears
 ReadCompressedBlock JSR KERNAL_READST
         			BNE Eof      			; either EOF or read error
 					JSR KERNAL_CHRIN		; Read repeat value
@@ -202,8 +244,6 @@ DivByTenEnd 		CLC
 
 
 Filename			.text 	'00164'
-SaveLoadFilename	.text 	'PLACEHOL.SAV'
-SaveLoadExtension	.text 	'.SAV'
 
 
 ; ------------------------------------ Additional memory addresses used as CPU registers
