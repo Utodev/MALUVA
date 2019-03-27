@@ -53,7 +53,7 @@ BEGIN
 	END;
     IF uppercase(target)='MSX'	THEN
     BEGIN
-		WriteLn('For MSX you will require a Spectrum .SC2 file (14343 bytes), a dump of MSX mode 2 screen area.');
+		WriteLn('For MSX you will require a MSX .SC2 file (14343 bytes), a dump of MSX mode 2 screen area.');
 		Writeln();
 		WriteLn('You should specify the number of lines from top you want to include in the image. Number of lines should be a multiple of 8.');
 		Writeln();
