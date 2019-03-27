@@ -93,7 +93,7 @@ Start2Copy
 
 ; ------ Multiple patchs on interpreter                        
 
-PatchCode	            LD      A, $F3                         ;EI
+PatchCode	            LD      A, $F3                         ;DI
                         LD      (PatchSetRAM), A
 
                         LD      A, $CD                         ;CALL
