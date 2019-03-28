@@ -93,7 +93,7 @@ Start2Copy
 
 ; ------ Multiple patchs on interpreter                        
 
-PatchCode	            LD      A, $F3                         ;DI
+PatchCode	        LD      A, $F3                         ;DI
                         LD      (PatchSetRAM), A
 
                         LD      A, $CD                         ;CALL
@@ -117,7 +117,8 @@ PatchCode	            LD      A, $F3                         ;DI
                         LD      (PatchInterrupt), A
 
                         POP     HL                                ; Restore position where MDG was loaded
-                        DEC     H                                 ; Point  256 bytes below
+                        DEC     H                                 
+                        DEC     H                                 ; Point  512 bytes below
                         LD      ($C453), HL                       ; Patch all scroll and copy routines
                         LD      ($C465), HL
                         LD      ($C50C), HL
