@@ -1,7 +1,7 @@
 
 ; MALUVA (C) 2018 Uto
 ; MIT License applies, see LICENSE file
-; TO BE COMPILED WITH SJASMPLUS
+; TO BE COMPILED WITH 64tass Turbo Assembler Macro V1.54.1900
 ; Thanks to Lasse at the lemon64 forums for his invaluable help
 
 ; Please notice this is my first ever code usin the 65xx assembler. I have no previous experience so
