@@ -29,9 +29,12 @@
                         define F_RANDOM_BLOCK_READ       $27
                         define F_RANDOM_BLOCK_WRITE      $26
 
-                        define DAAD_READ_FILENAME       $BFE3
+                        define DAAD_READ_FILENAME_ES     $BFE3
+                        define DAAD_READ_FILENAME_EN     $BF83
+
                         define DAAD_SYSMESS             $B402
-                        define DAAD_FILENAME_ADDR       $C011
+                        define DAAD_FILENAME_ADDR_ES    $C011
+                        define DAAD_FILENAME_ADDR_EN    $BFB1
                         
 
 Start                   
@@ -172,12 +175,20 @@ diskFailure             LD      A, 57                           ; E/S error sysm
                         LD      (HL),03                         ; and this restores POP HL
                         JR      cleanExit                        
 
-prepareSaveGame         CALL    DAAD_READ_FILENAME              ; request a file name from input 
-                        LD      HL, DAAD_FILENAME_ADDR          ; copies 8 characters to SavegameFilename where ther eextension is already present
-                        LD      DE, SavegameFilename            ; DAAD routine alrady stores a 8 byte length file name at DAAD_FILENAME_ADDR and fills with spaces if needed
+prepareSaveGame         LD      A, ($B001)
+                        CP      $3A
+                        JR      z, prepareSaveEnglish
+                        CALL    DAAD_READ_FILENAME_ES              ; request a file name from input 
+                        LD      HL, DAAD_FILENAME_ADDR_ES          ; copies 8 characters to SavegameFilename where ther eextension is already present
+prepareSaveGame2        LD      DE, SavegameFilename            ; DAAD routine alrady stores a 8 byte length file name at DAAD_FILENAME_ADDR_ES and fills with spaces if needed
                         LD      BC, 8                           
                         LDIR
                         RET
+
+prepareSaveEnglish      CALL    DAAD_READ_FILENAME_EN              ; request a file name from input 
+                        LD      HL, DAAD_FILENAME_ADDR_EN          ; copies 8 characters to SavegameFilename where ther eextension is already present
+                        JR      prepareSaveGame2
+
 
 ; ********************************************************************                        
 ;                           AUX FUNCTIONS
