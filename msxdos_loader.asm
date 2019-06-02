@@ -30,10 +30,11 @@
 
                         define  SC2BUFFER                Start2 + End2Copy - Start2Copy + 10
 
+                        define  CALSLT                   $001C          ; Call Segment: calls BIOS functions while having MSXDOS paged in
                         define  LDIRVM                   $005C          ; BIOS call to copy data to video memory
-                        define  CHGMOD                   $005F          ; Bios call to change video mode
-                        define  CALSLT                   $001C
-                        define  INIGRP                   $0072
+                        define  INIGRP                   $0072          ; Init video mode
+                        define  DISSCR                   $0041
+                        define  ENASCR                   $0044
 
 ;Spanish Interpreter Address
                         define  CurrentSlotAddress_S     $d053         ; This is te one used by DAAD, otherwise use $FFE0
@@ -385,13 +386,11 @@ SetMode                 LD      HL, FORCLR
                         LD      (HL), $01
                         INC     HL
                         LD      (HL), $01
-                        ld	A,2
-                        ld	($FCAF),A
-                        LD      IY,(EXPTBL-1)
-                        LD      IX, CHGMOD
-                        CALL    CALSLT                  ; CALSLT is used to call BIOS functions when MSXDOS is loadd, IX should have
                         ld	IY,(EXPTBL-1)
 	                ld	IX, INIGRP
+	                call	CALSLT	          
+                        ld	IY,(EXPTBL-1)
+	                ld	IX, DISSCR
 	                call	CALSLT	          
 
                         
@@ -401,6 +400,9 @@ PaintPixels             LD      HL, SC2BUFFER + 7  ; SC2 files have a 7 bytes he
                         LD      IY,(EXPTBL-1)
                         LD      IX, LDIRVM
                         CALL    CALSLT
+                        ld	IY,(EXPTBL-1)
+	                ld	IX, ENASCR
+	                call	CALSLT	          
 PaintAttrs              RET
 
 
