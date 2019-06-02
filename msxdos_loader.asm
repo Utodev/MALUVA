@@ -13,11 +13,12 @@
                         define  Start2                   $8100
 
 
-                        define  FORCLR                   $f3e9
+                        define  FORCLR                   $F3E9
                         define  BAKCLR                   $f3ea
                         define  BDRCLR                   $f3eb
                         define  EXPTBL                   $fcc1
-                        define  RAMAD0                   $f341          
+                        define  RAMAD0                   $f341     
+
 
                         ;For MSXDOS
                         define  BDOS                     $0005
@@ -27,7 +28,12 @@
                         define  F_OPEN                   $0F
                         define  F_CLOSE                  $10
 
-                        define  VRAM_BUFFER              $7400
+                        define  SC2BUFFER                Start2 + End2Copy - Start2Copy + 10
+
+                        define  LDIRVM                   $005C          ; BIOS call to copy data to video memory
+                        define  CHGMOD                   $005F          ; Bios call to change video mode
+                        define  CALSLT                   $001C
+                        define  INIGRP                   $0072
 
 ;Spanish Interpreter Address
                         define  CurrentSlotAddress_S     $d053         ; This is te one used by DAAD, otherwise use $FFE0
@@ -93,6 +99,18 @@ Start2Copy
 			LD      DE, FilesBinContent	; Load FILES.BIN at FilesBinContent if avaliable
                         LD      HL, FilesBinFileName	
                         CALL    MSXDOS1Load
+
+
+; ---- Load Loading Screen
+
+                        LD      HL, FilesBinContent + 33
+                        LD      DE, SC2BUFFER
+                        CALL    MSXDOS1Load
+                        LD      A, (LoadSuccessful)             ; This is checked only for the loading screen as it's optional and we need to know if we should draw it or not
+                        OR      A
+                        CALL    Z, DrawLoadingScreen
+
+
 
 ; ---- MDG files should be loaded so last byte is at $AFFF, that is, $B000 minus file size, but as we don't know size beforehand, we load it at $100, then move it to proper position
 
@@ -271,7 +289,9 @@ ReadFile                LD        C, F_SET_TRANSFER_ADDRESS
 
 CloseFile               LD        C, F_CLOSE
                         LD        DE, FCB
-                        CALL      BDOS			
+                        CALL      BDOS	
+                        XOR       A
+                        LD        (LoadSuccessful),A   
                         RET
                
 ; ---------------------------------------------------------------------------
@@ -350,14 +370,47 @@ SetSlotOnPage0          DI
                         LD      A,D
                         OUT     ($A8),A
                         RET
- 
+
+; ---------------------------------------------------------------------------
+
+; ---------------------------
+; DrawLoadingScreen
+; Sets video mode 2 and copy SC2 file loaded at $100 to video ram
+; ----------------------------
+
+DrawLoadingScreen       
+SetMode                 LD      HL, FORCLR 
+                        LD      (HL), $0f
+                        INC     HL
+                        LD      (HL), $01
+                        INC     HL
+                        LD      (HL), $01
+                        ld	A,2
+                        ld	($FCAF),A
+                        LD      IY,(EXPTBL-1)
+                        LD      IX, CHGMOD
+                        CALL    CALSLT                  ; CALSLT is used to call BIOS functions when MSXDOS is loadd, IX should have
+                        ld	IY,(EXPTBL-1)
+	                ld	IX, INIGRP
+	                call	CALSLT	          
+
+                        
+PaintPixels             LD      HL, SC2BUFFER + 7  ; SC2 files have a 7 bytes header
+                        LD      DE, 0
+                        LD      BC, $3800 ; Whole SC2 file minus 7
+                        LD      IY,(EXPTBL-1)
+                        LD      IX, LDIRVM
+                        CALL    CALSLT
+PaintAttrs              RET
+
 
 ; ---------------------------------------------------------------------------
 FilesBinFileName	db      "FILES   BIN"
 FilesBinContent	        db      "DAAD    MDG"
            		db      "DAAD    DDB"
            		db      "DAAD    Z80"
-
+                        db      "DAAD    SC2"
+LoadSuccessful          db      1                        
 
         dephase
 
