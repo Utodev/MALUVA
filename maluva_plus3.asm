@@ -12,14 +12,6 @@
 ;                           CONSTANTS 
 ; *******************************************************************
 
-			define M_GETSETDRV  	$89
-			define F_OPEN  		$9a
-			define F_CLOSE 		$9b
-			define F_READ  		$9d
-			define F_WRITE 		$9e       
-			define FA_READ 		$01
-			define FA_WRITE		$02
-			define FA_CREATE_AL	$0C
 
 			define P3DOS_INITIALISE $100
 			define P3DOS_OPEN 		$106
@@ -91,6 +83,9 @@ LoadImg
 
 ;  --- From this point we don't check read failure, we assume the graphic file is OK. Adding more fail control would increase the code size and chances of fail are low from now on
 
+; --- We will load the whole file at $C000, and then move to $4000 using LDIR. We could load the image directly to $4000, but then when reading from slow +3 DISK there would
+;     be possible to notice how it is painted.
+
 ; --- read file
                         PUSH 	DE
                         PUSH 	BC
@@ -126,7 +121,7 @@ drawWholeThirds		PUSH 	HL
 
                         
 ; --- This draws the last third, that is an uncomplete one, to do so, the file will come prepared so instead of an standar third with 8 character rows, it's a rare third with less rows.
-;     For easier undesrtanding we will call 'row" each character row left, and 'line' each pixel line left, so each row is built by 8 lines.
+;     For easier undesrtanding we will call 'row' each character row left, and 'line' each pixel line left, so each row is built by 8 lines.
 ;     Usually, you can read all first pixel lines for each rows in a third by reading 256 bytes (32 * 8), but if instead of 8 rows we have less, then we have to read 32 * <number of rows>
 ;     To determine how many rows are left we divide lines left by 8, but then to calculate how many bytes we have to read to load first pixel line for those rows we multiply by 32,
 ;     so in the end we multiply by 4. Once we know how much to read per each iteration we have to do 8 iterations, one per each line in a character. So we first prepare <lines left>*4 in
@@ -149,10 +144,10 @@ drawLoop				PUSH BC			; Preserve block to copy length
 						LDIR
 						POP DE 			; Restore destination
 
-						INC D
+						INC D			; Point to next line
 
 						POP BC
-                        DEC A
+                        DEC A			; Decrement loop variable
                         JR 	NZ, drawLoop
 
 ; read the attributes 
@@ -171,7 +166,7 @@ readAttr				PUSH 	HL    ;preserve buffer pointing to attributes
 						LDIR
 
 ; ---- Close file	
-						LD 	B, 0
+closeFile				LD 	B, 0
 						CALL P3DOS_CLOSE
                         
 	
@@ -183,77 +178,70 @@ cleanExit				CALL    pageOutDOS
 
 ; Both read savegame and load savegame use the same code, that is just slightly modified before jumping in the common part at DoReadOrWrite
 
-LoadGame				LD  	A, FA_READ
-						LD 	(OpenMode+1),A
-						LD  	A, F_READ
-						LD 	(ReadWrite),A
-						JR	DoReadOrWrite
+LoadGame				LD  	A, P3DOS_READ & $FF
+						LD 		(DOSFunction+1),A
+						LD 		A, 1 ;  Open Action= open and if has header, skip it.  
+						LD  	(OpenAction+1),A
+						XOR 	A  ;Create action =fail if not exist
+						LD  	(OpenAction+2),A
+						JR		DoReadOrWrite
 
-SaveGame				LD  	A, FA_CREATE_AL
-						LD 	(OpenMode+1),A
-						LD  	A, F_WRITE
-						LD 	(ReadWrite),A
+SaveGame				LD  	A, P3DOS_WRITE & $FF
+						LD 		(DOSFunction+1),A
+						LD 		A, $4 ;  Open Action= Erase existing version. Follow create action.
+						LD  	(OpenAction+1),A
+						LD 		A, 1 ;    Create action = Create and open new file with a header.
+						LD  	(OpenAction+2),A
+						JR		DoReadOrWrite
 
 
 DoReadOrWrite		
 						EI
-						CALL 	DAAD_READ_FILENAME	; Ask for file name
+						CALL DAAD_READ_FILENAME	; Ask for file name
 						DI
-						CALL 	cleanSaveName		; Convert DAAD 10 filename into 8.3 filename
+PathFileName			LD A, $FF							; +3DOS expects it to be $FF terminated
+						LD (DAAD_FILENAME_ADDR + 10),A
+						
 
-; --- Set default disk  
+; --- Intialize +3DOS
 						CALL 	pageinDOS
 						CALL 	P3DOS_INITIALISE
-                        JR      NC, diskFailure
+                        JR      NC, cleanExit
 
 ; --- open file
-OpenMode                LD      B, FA_READ		; May be modified by FA_CREATE_AL above
-						LD   	IX, SaveLoadFilename
-						RST     $08			
-                        DB      F_OPEN      
-                        JR      C, diskFailure
-                        LD 		(SavegameHandle+1), A
+		                LD      B,  0						; File handler 0
+						LD   	HL, DAAD_FILENAME_ADDR
+						LD 		C, 3   						; Open for read-write
+OpenAction				LD 		DE, 1  
+						CALL 	P3DOS_OPEN 					; May be modified above
+						JR 		NC, diskFailure 			; fail message, no need to close file
+
+
 ; --- read or write file
 
-						POP		IX			; Gets IX value back from stack, then push again
-						PUSH 	IX
-						LD 		BC, 512			; Save flags and objects
- 						RST     $08
-ReadWrite               DB      F_READ     		; May be modified by F_WRITE ABOVE
-						JR		C, diskFailure
-                      
 
-SavegameHandle			LD 		A, $FF			; That $FF will be modifed by code above
-						RST     $08
-                        DB      F_CLOSE
+						POP		HL					; Gets HL value back from stack, then push again. This is done cause flags position is in the stack
+						PUSH 	HL
+						LD 		DE, 512				; Save flags and objects
+                        LD      B, 0				; File handler
+						LD 		C, 2 				; Load at page 2, where flags are
+DOSFunction			    CALL 	P3DOS_READ
+						JR C,   closeFile			; Job done, close file and exit
 
+; ------ close file and fail
+diskFailureAndClose		LD 	B, 0	
+						CALL P3DOS_CLOSE
 
-						JR 		cleanExit	
-
-diskFailure				LD 		L, 57			; E/S error
+diskFailure				CALL pageOutDOS
+						LD 		L, 57			; E/S error
 						CALL    DAAD_SYSMESS
 						JR	 	cleanExit
+
 			
 
 ; ********************************************************************                        
 ;                           AUX FUNCTIONS
 ; *******************************************************************
-
-; *** Makes filename read by DAAD to be compliant with ESXDOS 8+3 filenames***
-cleanSaveName			LD 	HL, DAAD_FILENAME_ADDR			; address of filename requested
-						LD 	BC, $08FF						; we will use LDI together with DJNZ, B will work for DJNZ but we set C to $FF
-						LD 	DE, SaveLoadFilename
-cleanSaveNameLoop		LD 	A, (HL)							; to avoid LDI decrement of BC to affect B
-						OR 	A
-						JR	Z, cleanSaveSetExtension
-						CP 	$20
-						JR	Z, cleanSaveSetExtension
-						LDI
-						DJNZ 	cleanSaveNameLoop
-cleanSaveSetExtension	LD 	HL, SaveLoadExtension
-						LD 	BC, 5
-						LDIR
-						RET
 
 ;** Functions to page in ROM/RAM for DOS Calls
 pageinDOS				ld   BC,$7FFD       ;the horizontal ROM switch/RAM switch I/O address
@@ -286,8 +274,5 @@ DivByTenNoSub			DJNZ	DivByTenLoop
 						RET				;A= remainder, D = quotient
 
 Filename			DB 	"000.ZXS",$FF
-IMGNumLine			DB 	0
-SaveLoadFilename	DB 	"PLACEHOL.SAV",$FF
-SaveLoadExtension	DB 	".SAV", 0
 
 
