@@ -19,15 +19,21 @@
 			define P3DOS_READ       $112
 			define P3DOS_WRITE		$115
 			define BANKM 			$5B5C
-
+			
+			
+			define INTERPRETER_ADDRESS $6000  ; Address where the interpreter is loaded
 
 			define VRAM_ADDR 	  $4000 ; The video RAM address
 			define VRAM_ATTR_ADDR     VRAM_ADDR + $1800 ;  points to attributes zone in VRAM 
 
-			define DAAD_READ_FILENAME $7056	; DAAD function to request a file name
-			define DAAD_SYSMESS 	  $6DE8 ; DAAD function to print a system message
+			define DAAD_READ_FILENAME_ES $7056	; DAAD function to request a file name
+			define DAAD_READ_FILENAME_EN $6FF6	; DAAD function to request a file name
 
-			define DAAD_FILENAME_ADDR $70B5 ; DAAD function where the file name read by DAAD_READ_FILENAME is stored
+			define DAAD_SYSMESS_ES 	  $6DE8 ; DAAD function to print a system message
+			define DAAD_SYSMESS_EN 	  $6D94 ; DAAD function to print a system message
+
+			define DAAD_FILENAME_ADDR_ES $70B5 ; DAAD function where the file name read by DAAD_READ_FILENAME_ES is stored
+			define DAAD_FILENAME_ADDR_EN $7055 ; DAAD function where the file name read by DAAD_READ_FILENAME_ES is stored
 
 
 ; ********************************************************************                        
@@ -35,36 +41,47 @@
 ; ********************************************************************
 
 Start			
-			DI
-			PUSH 	BC
-			PUSH 	IX
-			
-			LD 	D, A		; Preserve first parameter
-			LD 	A, (BC)		; Get second parameter (function number) on A
 
-			OR 	A
-			JR 	Z, LoadImg
-			CP 	1
-			JP 	Z, SaveGame
-			CP 	2
-			JP 	Z, LoadGame
-			JP 	cleanExit
+						DI
+						PUSH 	BC
+						PUSH 	IX
+; ------ Detect if english or spanish interpreter
+						PUSH 	AF
+						PUSH 	BC
+						LD 		A, (INTERPRETER_ADDRESS+1)
+						CP 		$55			
+						JR		NZ, Spanish				 ; In english interpreter, the patch will be applied everytime the extern is called. Although that may 
+						CALL 	PatchForEnglish    		 ; look like losing time, I prefered keeping the code as smaller as possible, so I don't check if patch 
+Spanish					POP		BC						 ; already applied. It takes milliseconds and no one could notice when playing anyway
+						POP 	AF
+						
+; ------- Checking function called						
+Init					LD 	D, A		; Preserve first parameter
+						LD 	A, (BC)		; Get second parameter (function number) on A
+
+						OR 	A
+						JR 	Z, LoadImg
+						CP 	1
+						JP 	Z, SaveGame
+						CP 	2
+						JP 	Z, LoadGame
+						JP 	cleanExit
 ; ---- Set the filename
 LoadImg
-			LD 	A, D		; Restore first parameter
-			CALL 	DivByTen
-			ADD 	'0'
-			LD 	HL, Filename+2
-			LD 	(HL),A
-			LD 	A, D
-			CALL 	DivByTen
-			ADD 	'0'
-			DEC 	HL
-			LD 	(HL),A
-			DEC 	HL
-			LD 	A, '0'
-			ADD 	D
-			LD 	(HL),A
+						LD 	A, D		; Restore first parameter
+						CALL 	DivByTen
+						ADD 	'0'
+						LD 	HL, Filename+2
+						LD 	(HL),A
+						LD 	A, D
+						CALL 	DivByTen
+						ADD 	'0'
+						DEC 	HL
+						LD 	(HL),A
+						DEC 	HL
+						LD 	A, '0'
+						ADD 	D
+						LD 	(HL),A
 
 
 ; --- Init OS
@@ -87,16 +104,16 @@ LoadImg
 ;     be possible to notice how it is painted.
 
 ; --- read file
-                        PUSH 	DE
-                        PUSH 	BC
-                        LD      B, 0
-						LD 		C, 7 ; Load at page 7, which happens to be paged at C000 at the moment
-						LD 		HL, $C000; Load at C000
-						LD 		DE, 6913;  6913 is the maximum possible file (192 lines -fulls screen - plus one byte header header)
-                        CALL 	P3DOS_READ
-						LD 		A, ($C000) ; A register contains number of lines now
-                        POP 	BC
-                        POP 	DE
+					PUSH 	DE
+					PUSH 	BC
+					LD      B, 0
+					LD 		C, 7 ; Load at page 7, which happens to be paged at C000 at the moment
+					LD 		HL, $C000; Load at C000
+					LD 		DE, 6913;  6913 is the maximum possible file (192 lines -fulls screen - plus one byte header header)
+					CALL 	P3DOS_READ
+					LD 		A, ($C000) ; A register contains number of lines now
+					POP 	BC
+					POP 	DE
                         
                                             
 
@@ -197,10 +214,10 @@ SaveGame				LD  	A, P3DOS_WRITE & $FF
 
 DoReadOrWrite		
 						EI
-						CALL DAAD_READ_FILENAME	; Ask for file name
+ReadFilenameCall		CALL DAAD_READ_FILENAME_ES	; Ask for file name
 						DI
-PathFileName			LD A, $FF							; +3DOS expects it to be $FF terminated
-						LD (DAAD_FILENAME_ADDR + 10),A
+PatchFileName			LD A, $FF							; +3DOS expects it to be $FF terminated
+PatchFilenameEON		LD (DAAD_FILENAME_ADDR_ES + 10),A
 						
 
 ; --- Intialize +3DOS
@@ -210,7 +227,7 @@ PathFileName			LD A, $FF							; +3DOS expects it to be $FF terminated
 
 ; --- open file
 		                LD      B,  0						; File handler 0
-						LD   	HL, DAAD_FILENAME_ADDR
+DAADFileName			LD   	HL, DAAD_FILENAME_ADDR_ES
 						LD 		C, 3   						; Open for read-write
 OpenAction				LD 		DE, 1  
 						CALL 	P3DOS_OPEN 					; May be modified above
@@ -234,7 +251,7 @@ diskFailureAndClose		LD 	B, 0
 
 diskFailure				CALL pageOutDOS
 						LD 		L, 57			; E/S error
-						CALL    DAAD_SYSMESS
+DAADSysmesCall			CALL    DAAD_SYSMESS_ES
 						JR	 	cleanExit
 
 			
@@ -273,6 +290,19 @@ DivByTenLoop			SLA	D
 DivByTenNoSub			DJNZ	DivByTenLoop
 						RET				;A= remainder, D = quotient
 
-Filename			DB 	"000.ZXS",$FF
+
+; ** Function that patches Maluva code so it calls DAAD functions at the proper locations whe the english interpreter has been detected
+PatchForEnglish			LD HL, DAAD_READ_FILENAME_EN
+						LD (ReadFilenameCall+1), HL
+						LD HL, DAAD_SYSMESS_EN
+						LD (DAADSysmesCall+1), HL
+						LD HL, DAAD_FILENAME_ADDR_EN + 10
+						LD (PatchFilenameEON+1), HL
+						LD HL, DAAD_FILENAME_ADDR_EN
+						LD(DAADFileName+1), HL
+						RET
+
+
+Filename			DB 	"UTO.ZXS",$FF
 
 
