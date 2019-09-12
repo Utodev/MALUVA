@@ -35,6 +35,9 @@
 			define DAAD_FILENAME_ADDR_ES $70B5 ; DAAD function where the file name read by DAAD_READ_FILENAME_ES is stored
 			define DAAD_FILENAME_ADDR_EN $7055 ; DAAD function where the file name read by DAAD_READ_FILENAME_ES is stored
 
+			define DAAD_PATCH_ES $707A		    ; Address where the interpreter sets the internal flag which makes the words be cutted when printed
+			define DAAD_PATCH_EN $701A			; Address where the interpreter sets the internal flag which makes the words be cutted when printed	
+
 
 ; ********************************************************************                        
 ;                                 MAIN
@@ -50,9 +53,12 @@ Start
 						PUSH 	BC
 						LD 		A, (INTERPRETER_ADDRESS+1)
 						CP 		$55			
-						JR		NZ, Spanish				 ; In english interpreter, the patch will be applied everytime the extern is called. Although that may 
-						CALL 	PatchForEnglish    		 ; look like losing time, I prefered keeping the code as smaller as possible, so I don't check if patch 
-Spanish					POP		BC						 ; already applied. It takes milliseconds and no one could notice when playing anyway
+						JR		NZ, Spanish				; In english interpreter, the patch will be applied everytime the extern is called. Although that may 
+						CALL 	PatchForEnglish    		; look like losing time, I prefered keeping the code as smaller as possible, so I don't check if patch has been applied
+						JR 		LangCont
+Spanish					LD 		A, $C9					; (RET)
+						LD      (DAAD_PATCH_ES), A 		; Patching the "ask for file name" routine so it doesn't break the words the nwriting messages afterwards
+LangCont				POP		BC						; already applied. It takes milliseconds and no one could notice when playing anyway
 						POP 	AF
 						
 ; ------- Checking function called						
@@ -300,6 +306,8 @@ PatchForEnglish			LD HL, DAAD_READ_FILENAME_EN
 						LD (PatchFilenameEON+1), HL
 						LD HL, DAAD_FILENAME_ADDR_EN
 						LD(DAADFileName+1), HL
+						LD A, $C9						; Also patch the "ask for a file name" function so it doesn't make the words be cutted between lines after calling it (patch is RET replacing a RES 6,(IX-$0a))
+						LD (DAAD_PATCH_EN), A
 						RET
 
 
