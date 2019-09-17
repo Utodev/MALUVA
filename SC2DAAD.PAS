@@ -5,7 +5,7 @@ PROGRAM SC2DRG;
 USES sysutils;
 
 CONST TWO_KILOBYTES = 2048;
-	  VERSION = '0.3';
+	  VERSION = '0.4';
 
 
 TYPE cpcHeaderType =  ARRAY[0..127] of Byte;
@@ -17,9 +17,11 @@ BEGIN
 	Writeln();
 	Writeln(BinaryName,' ',VERSION);
 	Writeln();
-	WriteLn('SYNTAX: ',BinaryName,' <target> <inputFilename> <outputFilename> <lines>');
+	WriteLn('SYNTAX: ',BinaryName,' <target> <inputFilename> <outputFilename> <lines> [transparency]');
 	Writeln();
-	Writeln('Target may be c64, cpc, msx or zx.');
+	Writeln('Target may be c64, cpc, msx, zx or next.');
+	Writeln();
+	Writeln('Transparency could only be used in ZX Spectrum Next, value it''s a 0-255 value representing a color in RRRGGGBB format, or ''auto''. If value is 0 there will be no transparency so pure black cannot be used as transparent color. ');
 	Writeln();
 	WriteLn('Type "',BinaryName,' <target> HELP" to get specific help per each platform.');
 	Writeln();
@@ -48,7 +50,19 @@ BEGIN
 		Writeln();
 		WriteLn('The output file should have .ZXS extension, and have three digits for the number, i.e.: 001.ZXS, 012.ZXS, 118.ZXS');
 		Writeln();
-		WriteLn('The file created would not have a +3DOS header, you will have to add it IF you use the graphic in a Spectrum +3 environment. Don''t add a header IF you are going to use the graphic under ESXDOS or compatible.');
+		Halt(0);
+	END;
+    IF uppercase(target)='NEXT'	THEN
+    BEGIN
+		WriteLn('For Spectrum Next you will requiere a .PCX file with 8 bit color depth (256 colors) and 256x192 resolution, no matter if your image is smaller.');
+		Writeln();
+		WriteLn('You should specify the number of lines from top you want to include in the image.');
+		Writeln();
+		WriteLn('The output file should have .NXT extension, and have three digits for the number, i.e.: 001.NXT, 012.NXT, 118.NXT');
+		Writeln();
+		WriteLn('You can set transparency to any value from 0 to 255, representing a RGB value in RRRGGGBB (bitwise) format, in which case pixels matching that color will be transparent. If value is 0 then there will be no transparency, so pure black cannot be the transparent color. Also, if you set transparency to "auto", the most used color in the image will be the transparent one');
+		Writeln();
+		WriteLn('Please notice you can create a 256 color file using GIMP, make sure you use an indexed palette, 256 colors. Also take in mind Spectrum Next palette has a palette of 512 colors, so the 256 colors you file has will be addapted to the 256 closer colors from that palette.');
 		Halt(0);
 	END;
     IF uppercase(target)='MSX'	THEN
@@ -80,7 +94,7 @@ PROCEDURE Error(S:String);
 BEGIN
 	Writeln(S + '.');
 	Writeln();
-	Syntax;
+	Halt(1);
 END;
 
 
@@ -283,6 +297,111 @@ BEGIN
 	CloseFile(outFile);
 END;
 
+PROCEDURE NEXT(inputFilename, outputFilename: string; lines:byte; transparency : byte; Auto: boolean);
+	(* 
+	 NXT FILE FORMAT IS:
+	 00     : transparency color, if 0 no transparency is applied
+	 01     : number of lines
+	 02-257 : palette values
+	 257-   : pixel information, 256 bytes per line
+	*)
+	// auto=true means ignore the transparency color, and use the one that repeats the most, unless it's 0 which will raise an error
+	// Hey! I've borrowed the PCX decoding code from PCX2TWK, an utility I made in 1995 as part of my text adventure game engine NMP. So thanks to the 24 years younger myself for that work :-D
+VAR	inFile, outFile: FILE;
+	r,g,b,rgb,i,a : byte;
+	j: word;
+	width, height : word;
+	PCXHeader: ARRAY[0..127] OF Byte;
+	Palette : ARRAY[0..767] OF Byte;
+	Palette8B : ARRAY[0..255] OF Byte;
+	Buffer : ARRAY[0..255] OF Byte;
+	Used : ARRAY[0..255] OF Longint;
+	Max: Word;
+	maxIndex : Byte;
+
+
+BEGIN
+	AssignFile(inFile, inputFilename);
+	TRY
+	Reset(inFile, 1);
+	EXCEPT
+	 on E: Exception DO Error('Invalid PCX file:' + E.message);
+	END; 
+	AssignFile(outFile, outputFilename);
+	TRY
+	Rewrite(outFile, 1);
+	EXCEPT
+	 on E: Exception DO Error('Can''t open file for output:' + E.message);
+	END;
+	BlockRead(inFile, PCXHeader, 128);
+	IF (PCXHeader[0]<>10) THEN Error('Invalid PCX file: bad signature');
+	IF (PCXHeader[2]<>1) THEN Error('Invalid PCX file: no RLE');
+	IF (PCXHeader[3]<>8) THEN Error('Invalid PCX file: not a 256 colors image');
+	width :=PCXHeader[8] + 256*PCXHeader[9] - PCXHeader[4] + 256*PCXHeader[5]+1;
+ 	height :=PCXHeader[10] + 256*PCXHeader[11] - PCXHeader[6] + 256*PCXHeader[7]+1;
+	IF (width<>256) or (height<>192) THEN Error('Invalid resolution or color depth. Input should be a 256x192, 256 colors PCX file.');
+	BlockWrite(outFile, transparency, 1); // transparency color
+	BlockWrite(outFile, lines, 1); // Number of lines
+	// Process the palette
+	Seek(inFile, filesize(inFile)-768);
+	BlockRead(inFile, Palette, 768);
+	FOR i := 0 to 255 DO
+	BEGIN
+		R:= Palette[i*3];
+		G:= Palette[i*3+1];
+ 		B:= Palette[i*3+2];
+		R:= round(R * 7 / 255);
+		G:= round(G * 7 / 255);
+		B:= round(B * 3 / 255);
+		RGB := (R SHL 5) + (G SHL 2) + B;
+		BlockWrite(outFile, RGB, 1);
+		Palette8B[i] := RGB;
+	END;
+	// Process the pixels
+	FOR  i:= 0 TO 255 DO Used[i] := 0;
+    Seek(inFile, 128); // Back to pixels data
+	FOR  i := 0 to lines -1 DO
+	BEGIN
+		// Get one line
+		j := 0;
+		REPEAT
+			IF EOF(inFile) THEN Error('Invalid PCX file');
+			BlockRead(inFile,a,1);
+			IF a>=192 THEN 	BEGIN
+								b:=a-192;
+								IF EOF(inFile) THEN Error('Invalid PCX file');
+								BlockRead(inFile,a,1);
+							END 
+							ELSE b:=1;
+			FillChar(Buffer[j],b,a);
+			Used[a] := Used[a] + b;
+			j := j + b;
+		UNTIL j=width;
+		// Save the line
+		BlockWrite(outFile, Buffer, 256);
+	END;
+	IF Auto THEN
+	BEGIN
+		MaxIndex := 0;
+		Max := 0;
+		FOR I :=0 to 255 DO 
+		BEGIN
+		IF Used[i]>Max THEN
+		BEGIN
+		 Max := Used[i];
+		 MaxIndex := i;
+		END; 
+		END;
+		RGB := Palette8B[MaxIndex];
+		WriteLn('Most used color is ', MaxIndex,' which assigned RGB is ', RGB);
+		if (RGB=0) THEN Writeln('Warning: auto transparency found most used color is RGB (0,0,0) which will not apply transparency');
+		Seek(outFile, 0);
+		BlockWrite(outFile, RGB, 1); // Replace the transparent color with the one we found
+	END;
+	CloseFile(inFile);
+	CloseFile(outFile);
+END;
+
 
 PROCEDURE ZX(inputFilename, outputFilename: string; lines:byte);
 VAR i,rows, bytesToRead, bytesToSkip, attributesSize: word;
@@ -461,8 +580,11 @@ END;
 
 VAR target, inputFilename, outputFilename: string;
 	lines : word;
+	transparency : byte;
 	NumPaletteEntries : Byte;
-	LinesString: string;
+	AuxString: string;
+	AuxVal : Longint;
+	Auto : Boolean;
 
 BEGIN
 	IF ParamCount()<2 THEN Syntax();
@@ -475,20 +597,20 @@ BEGIN
 
 	// Check param Errors
 
-    IF (target<>'CPC') AND (target<>'ZX') AND (target<>'MSX') AND (target<>'C64') THEN Error('Invalid target.');
+    IF (target<>'CPC') AND (target<>'NEXT') AND (target<>'ZX') AND (target<>'MSX') AND (target<>'C64') THEN Error('Invalid target.');
 
     IF (uppercase(inputFilename) = 'HELP' ) THEN Help(target);	
 
     NumPaletteEntries := 4;
-    LinesString := ParamStr(4);
-    IF (uppercase(LinesString)='MODE1') THEN
+    AuxString := ParamStr(4);
+    IF (uppercase(AuxString)='MODE1') THEN
     BEGIN
-    	LinesString := '200';
+    	AuxString := '200';
     	NumPaletteEntries := 16;
     END;
 
 	TRY
-		lines := StrToInt(LinesString);
+		lines := StrToInt(AuxString);
     EXCEPT
         On E : EConvertError DO Error('Invalid number of lines:' + E.message);
     END;
@@ -501,9 +623,33 @@ BEGIN
 
     IF (NOT FileExists(inputFilename)) THEN Error('File not found');
 
-    // Let's do it
+	IF target='NEXT' THEN 
+	BEGIN
+		transparency := 0;
+		IF (ParamCount>4) THEN
+		BEGIN
+			AuxString := ParamStr(5);
+			IF (uppercase(AuxString)='AUTO') THEN 
+			BEGIN
+				Auto := true;
+				Transparency := 0;
+			END
+			ELSE
+			BEGIN	
+				TRY
+					AuxVal := StrToInt(AuxString);
+				EXCEPT
+					On E : EConvertError DO Error('Invalid transparency color: ' + E.message);
+				END;
+				IF (AuxVal<0) OR (AuxVal>255) THEN Error('Invalid transparency color: should be a value in the 0-255 range');
+				Transparency := AuxVal AND $FF;
+			END;	
+		END;
+	END;
 
+    // Let's do it
     IF target = 'ZX' THEN ZX(inputFilename, outputFilename, lines) 
+    ELSE IF target = 'NEXT' THEN NEXT(inputFilename, outputFilename, lines, transparency, auto) 
     ELSE IF target = 'CPC' THEN CPC(inputFilename, outputFilename, lines, NumPaletteEntries) 
     ELSE IF target = 'MSX' THEN MSX(inputFilename, outputFilename, lines)
     ELSE IF target = 'C64' THEN C64(inputFilename, outputFilename, lines);
