@@ -2,6 +2,6 @@ MALUVA es un módulo para DAAD (un EXTERN) que facilita distintas funciones que 
 
 MALUVA is a DAAD module (an EXTERN extension) allowing several functions so DAAD games can make use of fast data storage (floppy disk, hard disk, SD cards, carts, etc.)
 
-Instrucciones/Instructions:
+Please find Maluva documentation at its wiki:
 
 https://github.com/Utodev/MALUVA/wiki
