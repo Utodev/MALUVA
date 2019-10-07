@@ -551,7 +551,7 @@ BEGIN
 	EXCEPT
 	 on E: Exception DO Error('Invalid C64 KOA file:' + E.message);
 	END; 
-	if (FileSize(inFile)<>9002) THEN Error('Invalid file. File size must be 9002 bytes (Art Studio HiRes .art file).');
+	if (FileSize(inFile)<>9002) AND (FileSize(inFile)<>9009) THEN Error('Invalid file. File size must be 9002 or 9009 bytes (Art Studio HiRes .art file).');
 	AssignFile(outFile, outputFilename);
 	TRY
 	Rewrite(outFile, 1);
