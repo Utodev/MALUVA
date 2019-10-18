@@ -1,4 +1,3 @@
-
 ; MALUVA (C) 2018 Uto
 ; MIT License applies, see LICENSE file
 ; TO BE COMPILED WITH 64tass Turbo Assembler Macro V1.54.1900
@@ -37,13 +36,11 @@
 
 ; Extern call will bring first parameter in A register and second parameter in X register
 
-Start				PHA							; Preserve A, X, Y
-					STX RegistroX
-					STY RegistroY
-					SEI 						; Disable interrupt
+Start				SEI 						; Disable interrupt
+					STY 	RegistroY           ; Preserve Y register (who knows what's in)
 					STA     Registro1
 					TXA
-					LDX     Registro1            ; swap X and A 
+					LDX     Registro1            ; swap X and A , now X has first parameter, and A has second (function number)
 					CMP 	#0
 					BEQ		LoadImg
 					JMP		CleanExit
@@ -51,34 +48,49 @@ Start				PHA							; Preserve A, X, Y
 
 
 ; ---- Set the filename
-LoadImg				TXA 						; Move first parameter (image number) to A
-					JSR 	DivByTen
-					CLC
-					ADC 	#'0'
+LoadImg				TXA							; Move first parameter (image number) to A
+					LDY   	#100				; Divide by 100
+					JSR 	Divide              
+					PHA							; preseve reminder
+					TXA 						; get quotient
+					CLC							; Clear carry
+					CLV							; Clear Overflow
+					ADC 	#'0'				; inc to ascii equivalence
+					STA     Filename			; store value at file name area
+					PLA							; restore reminder
+					LDY   	#10 				; Divide by 10
+					JSR 	Divide              
+					CLC							; Clear carry
+					ADC 	#'0'				; inc to ascii equivalence
 					STA     Filename+2
-					LDA  	Registro2
-					JSR 	DivByTen
-					CLC
-					ADC 	#'0'
+					TXA
+					ADC 	#'0'				; inc to ascii equivalence
 					STA     Filename+1
-					LDA  	Registro2
-					CLC
-					ADC 	#'0'
-					STA     Filename
 
 OpenImgFile			LDA #0
 					STA SecondaryAddress+1  ; SETLFS for open
 					LDA #$05
         			LDX #<Filename
         			LDY #>Filename
-					JSR OpenFile
-					BCS CleanExit 			; If carry set, error
-
-
+		 			JSR KERNAL_SETNAM
+        			LDA #$02				; Logical number
+        			LDX $BA       			; last used device number
+        			BNE SecondaryAddress
+        			LDX #$08      			; default to device 8
+SecondaryAddress	LDY #$00      			; not $01 means: load to address stored in file
+        			JSR KERNAL_SETLFS
+					JSR KERNAL_OPEN 		; open file
+        			BCS  CleanExit
+					LDX #$02				; Use file #2 for input/output
+        			JSR KERNAL_CHKIN		; Set input to file
 					JSR KERNAL_READST
         			BNE Eof      			; either EOF or read error
 					JSR KERNAL_CHRIN		; Read number of attribute lines
-					PHA						; Save number of attr lines
+					STA Registro1			; Save number of attr lines
+					JSR KERNAL_READST		; Read file status
+        			BNE Eof      			; either EOF or read error, leave
+					LDA Registro1
+					PHA
 
 ; Clear the screen
 ClearAttr1          LDA #<VIDEORAM_ATTRS
@@ -127,38 +139,12 @@ LoadAttrs			LDA #<VIDEORAM_ATTRS
         			STA $AF
 					JSR ReadCompressedBlock
 
-Eof        			JSR CloseFile
-
-CleanExit 			LDY RegistroY			; Restore original X,Y,A values and return
-					LDX RegistroX
-					PLA		
-					CLI
-					RTS
-
-
-; Close File - ID #2
-
-CloseFile			LDA #$02
+Eof        			LDA #$02
         			JSR KERNAL_CLOSE  		; close file
         			JSR KERNAL_CLRCHN 		; restore input to default channel (keyboard)
-					RTS
 
-
-; Opens file whose name is at X,Y, and sets as file #2
-
-OpenFile 			JSR KERNAL_SETNAM
-        			LDA #$02				; Logical number
-        			LDX $BA       			; last used device number
-        			BNE SecondaryAddress
-        			LDX #$08      			; default to device 8
-SecondaryAddress	LDY #$00      			; not $01 means: load to address stored in file
-        			JSR KERNAL_SETLFS
-        			JSR KERNAL_OPEN 		; open file
-        			BCC  OpenFileCont
-					RTS                     ; On Carry, error
-
-OpenFileCont		LDX #$02				; Use file #2 for input/output
-        			JSR KERNAL_CHKIN		; Set input to file
+CleanExit 			LDY RegistroY			; Restore original Y value
+					CLI
 					RTS
 
 
@@ -221,37 +207,36 @@ DoNotIncMSBAttr		DEX
 
 
 
+	
 
-
-
-
-
-			
-
-; *** Divides A by 10 and returns the remainder in A and the quotient in Registro2. This code
+; *** Divides A by  Y and returns the remainder in A and the quotient in X. This code
 ; is not optimized at all, just using substractions. As this is not the real bottleneck in the
 ; picture loading, but the disk access, it has been considered optimizing it it's not worth the
 ; effort, unless it can be done to reduce memory used
-DivByTen    		LDX 	#$00
- 					STX 	Registro1
-DivByTenLoop		SEC
-					SBC 	#$0A
-					BMI     DivByTenEnd
-DivByTenCont 		INC 	Registro1
-					JMP 	DivByTenLoop
-DivByTenEnd 		CLC
-					ADC     #$0A
+Divide				STA Registro2
+					STY Registro1
+ 					LDA #0
+   					LDX #8
+ 					ASL Registro2
+DivideL1			ROL
+ 					CMP Registro1
+   					BCC DivideL2
+ 					SBC Registro1
+DivideL2			ROL Registro2
+   					DEX
+   					BNE DivideL1
+					LDX Registro2
 					RTS
 
 
-Filename			.text 	'00164'
+
+Filename			.text 	'00064'          ; 000 will be replaced by location number (i.e. 128, 078, 003)
 
 
-; ------------------------------------ Additional memory addresses used as CPU registers
+; ------------------------------------ Additional memory address used as auxiliary register
 Registro1			.byte 0
-Registro2			.byte 0
-; ------------------------------------ variables to preserve registers X and Y while extern is running
+Registro2           .byte 0
+; ------------------------------------ Variables to preserve register Y while extern is running
 RegistroY			.byte 0			
-RegistroX			.byte 0
 
 
