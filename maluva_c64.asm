@@ -7,7 +7,6 @@
 ; Please notice this is my first ever code usin the 65xx assembler. I have no previous experience so
 ; I haven't worked too much in optimization
 
-
 *       = $38BC
 
 ; ********************************************************************                        
@@ -15,6 +14,10 @@
 ; *******************************************************************
 
 			
+					PTR              = $02
+					PTR2             = $04
+					DRVNUM           = $BA
+					DRVNUMPLUS4      = $AE
 					KERNAL_SETLFS    = $FFBA
 					KERNAL_SETNAM    = $FFBD 
 					KERNAL_OPEN      = $FFC0
@@ -26,7 +29,9 @@
 
 					VIDEORAM_PIXELS  = $E000
 					VIDEORAM_ATTRS   = $CC00
+					VIDEORAM_ATTRS_PLUS4   = $BC00
 					BACKGROUND_COLOR = $D021
+					BACKGROUND_COLOR_PLUS4 = $FF19
 
 
 
@@ -36,7 +41,8 @@
 
 ; Extern call will bring first parameter in A register and second parameter in X register
 
-Start				SEI 						; Disable interrupt
+Start				PHP							; Save status register
+					SEI 						; Disable interrupt
 					STY 	RegistroY           ; Preserve Y register (who knows what's in)
 					STA     Registro1
 					TXA
@@ -67,21 +73,27 @@ LoadImg				TXA							; Move first parameter (image number) to A
 					ADC 	#'0'				; inc to ascii equivalence
 					STA     Filename+1
 
-OpenImgFile			LDA #0
+PatchBIT1
+OpenImgFile			JSR PatchPlus4
+PatchSTA1			BIT $ff3e
+					LDA #$0b
+PatchSTA3			BIT $ff06
+					LDA #0
 					STA SecondaryAddress+1  ; SETLFS for open
 					LDA #$05
         			LDX #<Filename
         			LDY #>Filename
 		 			JSR KERNAL_SETNAM
         			LDA #$02				; Logical number
-        			LDX $BA       			; last used device number
+PatchDrvNum			LDX DRVNUM       			; last used device number
         			BNE SecondaryAddress
         			LDX #$08      			; default to device 8
 SecondaryAddress	LDY #$00      			; not $01 means: load to address stored in file
         			JSR KERNAL_SETLFS
 					JSR KERNAL_OPEN 		; open file
-        			BCS  CleanExit
-					LDX #$02				; Use file #2 for input/output
+        			BCC +
+					JMP CleanExit
++					LDX #$02				; Use file #2 for input/output
         			JSR KERNAL_CHKIN		; Set input to file
 					JSR KERNAL_READST
         			BNE Eof      			; either EOF or read error
@@ -94,61 +106,67 @@ SecondaryAddress	LDY #$00      			; not $01 means: load to address stored in fil
 
 ; Clear the screen
 ClearAttr1          LDA #<VIDEORAM_ATTRS
-        			STA $AE
-        			LDA #>VIDEORAM_ATTRS
-					STA $AF
+        			STA PTR
+PatchAttrs1			LDA #>VIDEORAM_ATTRS
+					STA PTR+1
 					PLA						; Restore number of attr  lines
 					PHA 					; And save it again
         			TAX						; and move to X
 					LDY #$00				; Fill with 00 color
 					JSR ClearMem
 
-
 ClearPixels         PLA						; Restore number of attr  lines
-					PHA						; amnd save it again
-					ROL
-					ROL
-					ROL						; multiply by 8 to get the real number of lines
+					PHA						; and save it again
+					ASL
+					ASL
+					ASL						; multiply by 8 to get the real number of lines
 					TAX                     ; Move number of lines to X
 					LDA #<VIDEORAM_PIXELS
-        			STA $AE
+        			STA PTR
         			LDA #>VIDEORAM_PIXELS
-        			STA $AF
+        			STA PTR+1
 					LDY #0					; fill with $00
 					JSR ClearMem
 
 ClearAttr2          LDA #<VIDEORAM_ATTRS
-        			STA $AE
-        			LDA #>VIDEORAM_ATTRS
-					STA $AF
+        			STA PTR
+PatchAttrs2			LDA #>VIDEORAM_ATTRS
+					STA PTR+1
 					PLA						; Restore number of attr  lines
+					STA PTR2			    ; and save it for plus/4
         			TAX						; and move to X
 					LDY #$B0				; Fill with B0 color
 					JSR ClearMem
-				
+
 
 LoadPixels			LDA #<VIDEORAM_PIXELS
-        			STA $AE
+        			STA PTR
         			LDA #>VIDEORAM_PIXELS
-        			STA $AF
+        			STA PTR+1
 					JSR ReadCompressedBlock
 
 LoadAttrs			LDA #<VIDEORAM_ATTRS
-        			STA $AE
-        			LDA #>VIDEORAM_ATTRS
-        			STA $AF
+					STA PTR
+PatchAttrs3 		LDA #>VIDEORAM_ATTRS
+        			STA PTR+1
 					JSR ReadCompressedBlock
 
 Eof        			LDA #$02
         			JSR KERNAL_CLOSE  		; close file
         			JSR KERNAL_CLRCHN 		; restore input to default channel (keyboard)
 
-CleanExit 			LDY RegistroY			; Restore original Y value
-					CLI
+PatchSTA2
+CleanExit			BIT $ff3f
+					SEI
+PatchJSR			BIT ConvertColors
+					LDA #$3b
+PatchSTA4			BIT $ff06
+					LDY RegistroY			; Restore original Y value
+					PLP						; Restore status register
 					RTS
 
 
-; Clears Mem ar ($AE), as many bytes as the value received in X multuplied by 40, and filling with the value at Y
+; Clears Mem at ($AE), as many bytes as the value received in X multuplied by 40, and filling with the value at Y
 ClearMem			STY ClearValue+1
 					LDY #0
 
@@ -156,10 +174,10 @@ ClrOuterLoop		LDA #40
 					STA Registro1
 ClearValue			LDA #00					; this value is modified above
 					
-ClrInnerLoop		STA	($AE),Y	  			; Store value in RAM
-  					INC $AE 				; Increase pointer LSB
+ClrInnerLoop		STA	(PTR),Y	  			; Store value in RAM
+  					INC PTR 				; Increase pointer LSB
         			BNE ClrDoNotIncMSBAttr              
-        			INC $AF                 ; Increase pointer MSB
+        			INC PTR+1               ; Increase pointer MSB
 ClrDoNotIncMSBAttr  DEC Registro1
 					BNE ClrInnerLoop
 					DEX
@@ -197,10 +215,10 @@ CompresRep          STA Registro1           ; Preserve repeats
 CompressNoRep		LDX #1					; If not repeated, value is repeated just once
 
 RepeatLoop 			LDY #0					
-					STA	($AE),Y				; Store value in RAM
-  					INC $AE 				;  Increase pointer LSB
+					STA	(PTR),Y				; Store value in RAM
+  					INC PTR 				;  Increase pointer LSB
         			BNE DoNotIncMSBAttr              
-        			INC $AF                 ; Increase pointer MSB
+        			INC PTR+1               ; Increase pointer MSB
 DoNotIncMSBAttr		DEX 
 					BNE RepeatLoop
 					JMP CompressedLoop
@@ -226,17 +244,89 @@ DivideL2			ROL Registro2
    					DEX
    					BNE DivideL1
 					LDX Registro2
+-					RTS
+
+PatchPlus4			LDA #$2c
+					STA PatchBIT1			 ; Patch JSR to BIT $xxxx: do not call this patch anymore
+					LDA $ff00				 ; Check if we have TED timer1 at $ff00
+					CMP $ff00
+					BEQ -					 ; No, we don't have TED so this is a C64
+
+					LDA #$8d				 ; STA $xxxx
+					STA PatchSTA1
+					STA PatchSTA2
+					STA PatchSTA3
+					STA PatchSTA4
+
+					LDA #DRVNUMPLUS4
+					STA PatchDrvNum+1
+
+        			LDA #>VIDEORAM_ATTRS_PLUS4
+					STA PatchAttrs1+1
+					STA PatchAttrs2+1
+					STA PatchAttrs3+1
+					
+					LDA #$20
+					STA PatchJSR			 ; JSR $xxxx
 					RTS
 
-
+ConvertColors		LDA PTR2
+					STA Registro1
+					LDA #<VIDEORAM_ATTRS_PLUS4
+					STA PTR
+					STA PTR2
+					LDA #>VIDEORAM_ATTRS_PLUS4
+					STA PTR+1
+					AND #$F8
+					STA PTR2+1
+-					LDY #39
+-					LDA (PTR),Y
+					PHA
+					AND #$0f
+					TAX
+					LDA bclrtab,x
+					STA (PTR),Y
+					LDA blumtab,x
+					STA (PTR2),Y
+					PLA
+					LSR
+					LSR
+					LSR
+					LSR
+					TAX
+					LDA fclrtab,x
+					ORA (PTR),Y
+					STA (PTR),Y
+					LDA flumtab,x
+					ORA (PTR2),Y
+					STA (PTR2),Y
+					DEY
+					BPL -
+					CLC
+					LDA #40
+					ADC PTR
+					STA PTR
+					STA PTR2
+					BCC +
+					INC PTR+1
+					INC PTR2+1
++					DEC Registro1
+					BNE --
+					RTS
 
 Filename			.text 	'00064'          ; 000 will be replaced by location number (i.e. 128, 078, 003)
 
+bclrtab				.byte $00, $01, $02, $03, $04, $05, $06, $07
+					.byte $08, $09, $02, $01, $01, $05, $0e, $01
+fclrtab				.byte $00, $10, $20, $30, $40, $50, $60, $70
+					.byte $80, $90, $20, $10, $10, $50, $e0, $10
+blumtab				.byte $00, $70, $30, $40, $30, $40, $10, $60
+					.byte $30, $00, $40, $20, $40, $60, $40, $50
+flumtab				.byte $00, $07, $03, $04, $03, $04, $01, $06
+					.byte $03, $00, $04, $02, $04, $06, $04, $05
 
 ; ------------------------------------ Additional memory address used as auxiliary register
 Registro1			.byte 0
 Registro2           .byte 0
 ; ------------------------------------ Variables to preserve register Y while extern is running
 RegistroY			.byte 0			
-
-
