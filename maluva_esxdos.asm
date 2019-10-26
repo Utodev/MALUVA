@@ -49,8 +49,8 @@
 
 Start			
 					DI
-					PUSH 	IX
 					PUSH 	BC
+					PUSH 	IX
 
 ; ------ Detect if english or spanish interpreter
 					PUSH 	AF
@@ -203,8 +203,8 @@ readAttr			XOR 	A
 					RST     $08
                     DB      F_CLOSE
 	
-cleanExit			POP 	BC
-					POP 	IX
+cleanExit			POP 	IX
+					POP 	BC
 					EI
 					RET
 
@@ -241,6 +241,7 @@ OpenMode            LD      B, FA_READ		; May be modified by FA_CREATE_AL above
 					LD 		(CloseFile+1), A
 ; --- read or write file
 
+					
 					POP		IX			; Gets IX value back from stack, then push again
 					PUSH 	IX
 					LD 		BC, 512			; Save flags and objects
@@ -262,19 +263,13 @@ DAADSysmesCall		CALL    DAAD_SYSMESS_ES
 			
 
 XMessage			LD 		L, D ;  LSB at L
+					POP 	IX
 					POP 	BC
 					INC 	BC	 ; We need not only to increase BC, but also make sure when exiting it returns increased, and cleanExit will restore it from stack so we have to update valus at stack
 					PUSH 	BC
+					PUSH 	IX
 					LD 		A, (BC)
 					LD 		H, A ; MSB AT H, so Message address at HL
-					AND 	$C0
-					RLCA
-					RLCA    ;  I have file number in A now
-					ADD 	'0'
-					LD     	(XMESSFilename),A
-					LD 		A, H
-					AND 	$7F
-					LD 		H, A  ; HL points to offset in the file for message
 					LD	 	(XMessBuffer), HL   ; Preserve file offset, using the buffer as temporary address
 					CALL 	setDefaultDisk
 					JR 		C, diskFailure
@@ -287,10 +282,9 @@ XMessage			LD 		L, D ;  LSB at L
 					LD 		(CloseFile+1),A ; Preserve file handle to be able to close it later
 					LD 		(XmessReadFile+1),A ; Preserve file handle to be able to read from it
 ; Seek file					
-					LD		DE, (XMessBuffer) ; Restore file offset
-					INC 	DE
-					LD 		BC, 0   			; BCDE --> Offset + 1 (To skip byte with length)
-					LD 		IXL, 0    ; L=0 --> Seek from start
+					LD		DE, (XMessBuffer)	 ; Restore file offset
+					LD 		BC, 0   			; BCDE --> Offset 
+					LD 		IXL, 0    			; L=0 --> Seek from start
 					RST 	$08
 					DB 		F_SEEK
 
@@ -302,11 +296,9 @@ XmessReadFile		LD 		A, $FF; // Self modified above
 					DB      F_READ  ; Read 
 
 ; At this point we have the message at XmessBuffer		
-XmessPrintMessage	POP 	BC
-					POP 	IX
-					SET 	6, (IX-01)
+XmessPrintMessage	POP 	IX
+					SET 	6, (IX-01)  ; Required by DAAD to print messages
 					PUSH 	IX
-					PUSH 	BC
 					LD 		HL, XMessBuffer
 					EI
 CallPrintMsg		CALL	DAAD_PRINTMSG_ADDR_ES					
