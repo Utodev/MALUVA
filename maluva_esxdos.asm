@@ -28,18 +28,19 @@
 			define VRAM_ATTR_ADDR     VRAM_ADDR + $1800 ;  points to attributes zone in VRAM 
 
 			define DAAD_READ_FILENAME_ES $7056	; DAAD function to request a file name
-			define DAAD_READ_FILENAME_EN $6FF6	; DAAD function to request a file name
+			define DAAD_READ_FILENAME_EN $6FF6	;
 
 			define DAAD_SYSMESS_ES 	  $6DE8 ; DAAD function to print a system message
-			define DAAD_SYSMESS_EN 	  $6D94 ; DAAD function to print a system message
+			define DAAD_SYSMESS_EN 	  $6D94 
 
 			define DAAD_FILENAME_ADDR_ES $70B5 ; DAAD function where the file name read by DAAD_READ_FILENAME_ES is stored
-			define DAAD_FILENAME_ADDR_EN $7055 ; DAAD function where the file name read by DAAD_READ_FILENAME_ES is stored
+			define DAAD_FILENAME_ADDR_EN $7055 
 
 			define DAAD_PRINTMSG_ADDR_ES $6DF1 ; DAAD function that prints the message pointed by HL
+			define DAAD_PRINTMSG_ADDR_EN $6D90
 
 			define DAAD_PATCH_ES $707A		    ; Address where the interpreter sets the internal flag which makes the words be cutted when printed
-			define DAAD_PATCH_EN $701A			; Address where the interpreter sets the internal flag which makes the words be cutted when printed	
+			define DAAD_PATCH_EN $701A			
 
 
 ; ********************************************************************                        
@@ -270,7 +271,7 @@ XMessage			LD 		L, D ;  LSB at L
 					RLCA
 					RLCA    ;  I have file number in A now
 					ADD 	'0'
-					LD     	(XMESSFilename+6),A
+					LD     	(XMESSFilename),A
 					LD 		A, H
 					AND 	$7F
 					LD 		H, A  ; HL points to offset in the file for message
@@ -308,7 +309,7 @@ XmessPrintMessage	POP 	BC
 					PUSH 	BC
 					LD 		HL, XMessBuffer
 					EI
-					CALL	DAAD_PRINTMSG_ADDR_ES					
+CallPrintMsg		CALL	DAAD_PRINTMSG_ADDR_ES					
 					DI
 					JR CloseFile  
 
@@ -363,6 +364,8 @@ PatchForEnglish			LD HL, DAAD_READ_FILENAME_EN
 						LD(cleanSaveName+1), HL
 						LD A, $C9						; Also patch the "ask for a file name" function so it doesn't make the words be cutted between lines after calling it (patch is RET replacing a RES 6,(IX-$0a))
 						LD (DAAD_PATCH_EN), A
+						LD HL, DAAD_PRINTMSG_ADDR_EN    ; Path the DAAD "PrintText" function
+						LD (CallPrintMsg+1), HL
 						RET
 
 
@@ -370,6 +373,6 @@ Filename				DB 	"UTO.ZXS",0
 ImgNumLine					DB 	0
 SaveLoadFilename		DB 	"PLACEHOLD.SAV",0
 SaveLoadExtension		DB 	".SAV", 0
-XMESSFilename			DB  "XMES.M0",0
+XMESSFilename			DB  "0.XMB",0
 XMessBuffer				DS 512
 
