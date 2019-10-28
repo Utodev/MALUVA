@@ -47,18 +47,17 @@ Start
 ; --- Check function selected
                         LD      D, A
                         LD      A, (BC)
-
                         OR      A
                         JR      Z, loadImg
                         CP      1
                         JP      Z, saveGame
                         CP      2
                         JP      Z, loadGame
+                        CP      3
+                        JP      Z, xMessage
                         JP      cleanExit
 
-
 ; ---- Set the filename
-
 loadImg                 LD      A, D
                         CALL    DivByTen
                         ADD     '0'
@@ -81,13 +80,8 @@ loadImg                 LD      A, D
                         OR      A                               ; On failure to open, exit
                         JR      NZ, cleanExit
 
-                        
-
-
-
-
 ; --- Patch FCB so record size for reading is 1, and define where to read to when reading
-                        LD      DE, VRAM_BUFFER
+                        LD      DE, WorkBuffer
                         CALL    setFCBParams
 
                         LD      HL, 1                                   ; Blocks to read
@@ -98,7 +92,7 @@ loadImg                 LD      A, D
 
 ; ----  Calculate number of lines divided by 8
 
-                        LD      A, (VRAM_BUFFER)
+                        LD      A, (WorkBuffer)
                         SRL     A
                         SRL     A
                         SRL     A
@@ -121,7 +115,7 @@ loadImg                 LD      A, D
 
 
 ; ----- Close file
-                        CALL    closeFile
+cleanAndClose           CALL    closeFile
 
 cleanExit               POP     IX
                         POP     BC
@@ -220,7 +214,7 @@ CopyToVRAM
 copyToVRAMLoop          PUSH    AF                              ;lines to load
 
                         LD      C, F_SET_TRANSFER_ADDRESS
-                        LD      DE, VRAM_BUFFER                 ; where to load them
+                        LD      DE, WorkBuffer                 ; where to load them
                         CALL    BDOS
 
                         LD      HL, 100H                        ; Blocks to read = bytes to read
@@ -228,7 +222,7 @@ copyToVRAMLoop          PUSH    AF                              ;lines to load
                         LD      DE, FCB
                         CALL    BDOS
 
-                        LD      HL, VRAM_BUFFER
+                        LD      HL, WorkBuffer
                         LD      C, $98
                         LD      B, 0
 ;IFNDEF MSX2
@@ -255,15 +249,15 @@ ClearScreen
                         OUT     ($99),A
 
                         XOR     A                               ; Fill VRAM buffer with zeroes
-                        LD      HL, VRAM_BUFFER
+                        LD      HL, WorkBuffer
                         LD      (HL),A
-                        LD      DE, VRAM_BUFFER + 1
+                        LD      DE, WorkBuffer + 1
                         LD      BC, $FF
                         LDIR
                         POP     AF
 
 
-ClearScreenLoop         LD      HL, VRAM_BUFFER
+ClearScreenLoop         LD      HL, WorkBuffer
                         LD      C, $98
                         LD      B, 0
 ;IFNDEF MSX2
@@ -312,8 +306,51 @@ createFile              CALL    prepareFCB
                         LD      DE, FCB
                         CALL    BDOS                  
                         RET
+; Xmessage printing
+xMessage			    LD 		L, D ;  LSB at L
+				    	POP 	IX
+				    	POP 	BC
+				    	INC 	BC	 ; We need not only to increase BC, but also make sure when exiting it returns increased, and cleanExit will restore it from stack so we have to update valus at stack
+				    	PUSH 	BC
+				    	PUSH 	IX
+				    	LD 		A, (BC)
+				    	LD 		H, A ; MSB AT H, so Message address at HL
+                        LD      (WorkBuffer), HL
+                        
+; ------- Open file      
+
+                        LD      HL, XMESSFilename
+                        CALL    openFile                        ; Prepares the FCB and opens the file
+                        OR      A                               ; On failure to open, exit
+                        JP      NZ, cleanExit
+
+                        LD      DE, WorkBuffer
+                        CALL    setFCBParams                    ; Patch the FCB so read unit is 1 byte and define where to read to when reading
+
+; ------- Seek File              
+
+                        LD      HL, (WorkBuffer)
+                        LD      (FCB+33), HL                     ; At FCB+33 there is a 32 bit value meaning the offest of the file
+                        XOR     A
+                        LD      (FCB+35),A
+                        LD      (FCB+36),A
+
+; ------- Read file
+                        LD      HL, 512                         ; Blocks to read
+                        LD      C, F_RANDOM_BLOCK_READ
+                        LD      DE, FCB
+                        CALL    BDOS
+
+; ------- Print message 
+                        LD      HL, WorkBuffer
+                        CALL    $BD9D
 
 
+; ------- Close File
+                        JP      cleanAndClose
+
+
+          
 
 ; ---------------------------------------------------------------------------
 ; *** Divides A by 10 and returns the remainder in A and the quotient in D^***
@@ -337,8 +374,8 @@ DivByTenNoSub
 ; ---------------------------------------------------------------------------
 ImageFilename           DB      "000     MS2"
 SavegameFilename        DB      "UTO     SAV"        
+XMESSFilename			DB      "0       XMB"
+WorkBuffer              DS      $200                                                ; WE only need $100 for the pictures buffer but we are using $200 for XMEssages, so we 
 
-VRAM_BUFFER
-                        DS      $100
 
 ; ---------------------------------------------------------------------------
