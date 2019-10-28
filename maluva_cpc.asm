@@ -6,7 +6,7 @@
 ; a lot with their valuable CPC knowledge
 
 			ORG $28BC
-                        OUTPUT  MLV_CPC.BIN
+            OUTPUT  MLV_CPC.BIN
 	
 
 ; ********************************************************************                        
@@ -17,57 +17,58 @@
 			define CAS_IN_OPEN     	$bc77
 			define CAS_IN_DIRECT	$bc83
 			define CAS_IN_CLOSE    	$bc7a
-			define CAS_IN_CHAR 	$bc80
-			define SCR_SET_INK	$bc32
-			define SCR_SET_MODE	$bc0e			
-			define TXT_OUTPUT 	$bb5a
+			define CAS_IN_CHAR 		$bc80
+			define SCR_SET_INK		$bc32
+			define SCR_SET_MODE		$bc0e			
+			define TXT_OUTPUT 		$bb5a
 			define KM_WAIT_CHAR 	$bb06
 
 
 			; Other contants
-			define BUFFER2K_ADDR	$0040
-			define TWO_KILOBYTES   	$0800
-			define VRAM_ADDR 	$C000 ; The video RAM address
+			define BUFFER2K_ADDR			$0040
+			define TWO_KILOBYTES   			$0800
+			define VRAM_ADDR 				$C000 ; The video RAM address
+			define DAAD_PRINT_MESSAGE_ES 	$1629
 
 
 ; ********************************************************************                        
 ;                                 MAIN
 ; ********************************************************************
 Start			
-			DI
-			PUSH 	BC
-			PUSH 	IX
+						DI
+						PUSH 	BC
+						PUSH 	IX
 
 
-			LD 	D, A		; Preserve first parameter
-			LD 	A, (BC)		; Get second parameter (function number) on A
+						LD 		D, A		; Preserve first parameter
+						LD 		A, (BC)		; Get second parameter (function number) on A
 
 
-			OR 	A
-			JP 	NZ, cleanExit
+						CP 		3
+						JP 		Z, XMessage
+						OR 		A
+						JP 		NZ, cleanExit
+
 
 
 ; ---- Set the filename
-LoadPicture		LD 	A, D		; Restore first parameter
-			CALL 	DivByTen
-			ADD 	'0'
-			LD 	HL, Filename+2
-			LD 	(HL),A
-			LD 	A, D
-			CALL 	DivByTen
-			ADD 	'0'
-			DEC 	HL
-			LD 	(HL),A
-			DEC 	HL
-			LD 	A, '0'
-			ADD 	D
-			LD 	(HL),A
+LoadPicture				LD 	A, D		; Restore first parameter
+						CALL 	DivByTen
+						ADD 	'0'
+						LD 	HL, Filename+2
+						LD 	(HL),A
+						LD 	A, D
+						CALL 	DivByTen
+						ADD 	'0'
+						DEC 	HL
+						LD 	(HL),A
+						DEC 	HL
+						LD 	A, '0'
+						ADD 	D
+						LD 	(HL),A
 
 
-; --- silence CPC firmware messages
-			LD A, 201 				; RET
-			LD (TXT_OUTPUT),A
-
+						CALL SilenceFW
 
 ; --- open file and reads CPC header, leaving file pointer just after
                         LD 	B, 7			; Filename length
@@ -92,13 +93,13 @@ LoadPicture		LD 	A, D		; Restore first parameter
                         JP 	NZ, LoadPartialPicture
 
 ; Load Whole graphic and palette
-LoadFullPicture		LD	HL, VRAM_ADDR + 16384 - 8  ; Point to spare zone, plenty of zeros. Blank Palette
-			CALL 	SetPalette
-			LD 	HL, VRAM_ADDR		   ;  Read all picture data in screen
-			CALL 	CAS_IN_DIRECT
-			LD 	HL, VRAM_ADDR + 16384 -4   ;  Palette fw colors have been loaded at the end
-			CALL    SetPalette
-			JR 	FileLoaded		   ; Ok, let's go to exit procedure
+LoadFullPicture			LD	HL, VRAM_ADDR + 16384 - 8  ; Point to spare zone, plenty of zeros. Blank Palette
+						CALL 	SetPalette
+						LD 	HL, VRAM_ADDR		   ;  Read all picture data in screen
+						CALL 	CAS_IN_DIRECT
+						LD 	HL, VRAM_ADDR + 16384 -4   ;  Palette fw colors have been loaded at the end
+						CALL    SetPalette
+						JR 	FileLoaded		   ; Ok, let's go to exit procedure
 
 
 ; Ok, this codebelow needs an explanation: when CPC reads char by char using CAS_IN_CHAR, it actually reads 2K of data on first CAS_IN_CHAR, and then every 
@@ -122,11 +123,11 @@ LoadPartialPicture      CALL 	CAS_IN_CHAR		; Force loading first 2K buffer
                         LD 	IXH, A 			; we also keep it at IXH too for fast use
                         
 ; read the palette	
-			LD 	HL, BUFFER2K_ADDR + 1   ; Next 4 bytes are the palette
-			LD 	E, 4			; Set 4 colors palette
-			CALL 	SetPalette
+						LD 	HL, BUFFER2K_ADDR + 1   ; Next 4 bytes are the palette
+						LD 	E, 4			; Set 4 colors palette
+						CALL 	SetPalette
 
-			LD 	HL, BUFFER2K_ADDR + 5
+						LD 	HL, BUFFER2K_ADDR + 5
                         LD 	C, (HL)
                         INC	HL
                         LD 	B, (HL)			; BC Contains how many bytes there are per scanline
@@ -137,41 +138,101 @@ LoadPartialPicture      CALL 	CAS_IN_CHAR		; Force loading first 2K buffer
 
 
 
-			LD 	IXL, 8			; 8 times
-			LD 	DE, VRAM_ADDR		; Point to RAM addr
+						LD 	IXL, 8			; 8 times
+						LD 	DE, VRAM_ADDR		; Point to RAM addr
 			
-ReadFileLoop		PUSH 	BC
-			PUSH 	DE			; Yes, you are thiking this can be made faster with LDI, or even with PUSH/POP, and you are right, but
-			LDIR				; the bottleneck is the disk reading, so improving this is not noticeable for users, and any other solution
-			POP 	DE			; will just require more RAM so it's not worth the effort. 
-			POP 	BC	
-			DEC 	IXH			; One scanline less in the 2K block
-			JR 	Z, Next2KBlock
-ReadFileCont		PUSH 	HL
-			LD 	HL, $800		; Offset from one CPC line to the one inmediatly below
-			ADD 	HL, DE			; Make HL point to next line
-			LD	D, H			
-			LD 	E, L			; and move it to DE
-			POP 	HL			; restore HL
-			DEC 	IXL
-			JR 	NZ, ReadFileLoop
+ReadFileLoop			PUSH 	BC
+						PUSH 	DE			; Yes, you are thiking this can be made faster with LDI, or even with PUSH/POP, and you are right, but
+						LDIR				; the bottleneck is the disk reading, so improving this is not noticeable for users, and any other solution
+						POP 	DE			; will just require more RAM so it's not worth the effort. 
+						POP 	BC	
+						DEC 	IXH			; One scanline less in the 2K block
+						JP 		Z, Next2KBlock
+ReadFileCont			PUSH 	HL
+						LD 		HL, $800		; Offset from one CPC line to the one inmediatly below
+						ADD 	HL, DE			; Make HL point to next line
+						LD	D, H			
+						LD 	E, L			; and move it to DE
+						POP 	HL			; restore HL
+						DEC 	IXL
+						JR 	NZ, ReadFileLoop
 
 
 ; ---- Close file		
-FileLoaded		CALL 	CAS_IN_CLOSE
+FileLoaded				CALL 	CAS_IN_CLOSE
 	
-cleanExit		LD 	A, $CF			; restore original value (RST $8)
-			LD 	(TXT_OUTPUT),A
+cleanExit				LD 	A, $CF			; restore original value (RST $8)
+						LD 	(TXT_OUTPUT),A
 
-			EI
-			POP 	IX
-			POP 	BC
-			RET
-
-
+						EI
+						POP 	IX
+						POP 	BC
+						RET
 
 
-; Both read savegame and load savegame use the same code, that is just slightly modified before jumping in the common part at DoReadOrWrite
+XMessage				LD 		L, D   ; First parameter (LSB) to L
+						POP 	IX
+						POP 	BC
+						INC 	BC
+						LD 		A, (BC) ; Third parameter (MSB) to H
+						PUSH 	BC
+						PUSH 	IX
+						LD 		H, A
+						LD 		(AuxVar), HL  ;  Preserve offset 
+						LD 		A, H
+						SRL		A
+						SRL		A
+						SRL		A					; Now A contains the file number
+						CALL 	DivByTen
+						ADD 	'0';
+						LD 		(XMESSFilename+1), A
+						LD 		A, D
+						ADD 	'0';
+						LD 		(XMESSFilename), A ; File name is ready
+
+						CALL 	SilenceFW
+						
+; --- open file and reads CPC header
+                        LD 	B, 6			; Filename length
+                        LD 	HL, XMESSFilename		; Points to file name
+                        LD 	DE, BUFFER2K_ADDR	
+                        CALL 	CAS_IN_OPEN		; Open file
+                        JP 	NC, cleanExit
+                        JP 	Z, cleanExit
+
+; ---- read the file
+						CALL 	CAS_IN_CHAR  ; Although this is supposed to read only one char, in fact it reads one char in A, and a whole 2K at the BUFFER2K_ADDR
+
+						POP 	IX
+						POP 	BC
+						SET 	6, (IX-1) ; Required by DAAD to print messages
+						PUSH 	BC
+						PUSH 	IX
+
+						LD 		DE, (AuxVar) ; Restore Global Offset
+						LD 		A, D
+						AND 	7
+						LD 		D, A 		  ; Remove first 5 bits to get the offset withing this specific file
+
+						LD 		HL, BUFFER2K_ADDR
+						ADD 	HL, DE
+						
+						EI
+						CALL 	DAAD_PRINT_MESSAGE_ES
+						DI
+
+						;SET 	4, (IX-01) 
+
+
+						JR 		FileLoaded  ; Close file and exit
+
+
+
+
+
+						
+
+; Now HL holds the global offset
 
 
 
@@ -180,20 +241,26 @@ cleanExit		LD 	A, $CF			; restore original value (RST $8)
 ; *******************************************************************
 
 
+; --- silence CPC firmware messages
+SilenceFW				LD A, 201 				; RET
+						LD (TXT_OUTPUT),A
+						RET
+
+
 ; ** Receives at HL a pointer to a 4 byte buffer with ink colors, E is the number of colors to set
-SetPalette		XOR A
-SetPaletteLoop 		LD 	B,(HL)
-			LD 	C, B
-			PUSH 	AF
-			PUSH 	HL
-			CALL 	SCR_SET_INK
-			POP     HL
-			POP 	AF
-			INC 	HL
-			INC 	A
-			CP 	4
-			JR 	NZ, SetPaletteLoop
-			RET
+SetPalette				XOR A
+SetPaletteLoop 			LD 	B,(HL)
+						LD 	C, B
+						PUSH 	AF
+						PUSH 	HL
+						CALL 	SCR_SET_INK
+						POP     HL
+						POP 	AF
+						INC 	HL
+						INC 	A
+						CP 	4
+						JR 	NZ, SetPaletteLoop
+						RET
 
 
 
@@ -211,27 +278,28 @@ Next2KBlock		LD 	HL, BUFFER2K_ADDR + TWO_KILOBYTES	; Set buffer pointer to end o
 			LD 	A, (ScansPer2kBuffer)
 			LD 	IXH, A				; restore number of scans to read on next buffer
 			LD 	HL, BUFFER2K_ADDR			; restore source pointer to beginning of buffer
-			JR 	ReadFileCont
+			JP 	ReadFileCont
 
 
 
 ; *** Divides A by 10 and returns the remainder in A and the quotient in D^***
-DivByTen		LD 	D, A			; Does A / 10
-			LD 	E, 10			; At this point do H / 10
-			LD 	B, 8
-			XOR 	A				; A = 0, Carry Flag = 0
-DivByTenLoop		SLA	D
-			RLA			
-			CP	E		
-			JR	C, DivByTenNoSub
-			SUB	E		
-			INC	D		
-DivByTenNoSub		djnz 	DivByTenLoop
-			RET				;A= remainder, D = quotient
+DivByTen				LD 	D, A			; Does A / 10
+						LD 	E, 10			; At this point do H / 10
+						LD 	B, 8
+						XOR 	A				; A = 0, Carry Flag = 0
+DivByTenLoop			SLA	D
+						RLA			
+						CP	E		
+						JR	C, DivByTenNoSub
+						SUB	E		
+						INC	D		
+DivByTenNoSub			DJNZ 	DivByTenLoop
+						RET				;A= remainder, D = quotient
 
 
 
-Filename		DB 	"000.CPC"
-ScansPer2kBuffer	DB 	0
-Palette			DS 	4
+Filename				DB 	"000.CPC"
+ScansPer2kBuffer		DB 	0
+AuxVar					DW 	0
+XMESSFilename			DB  "00.XMB"
 
