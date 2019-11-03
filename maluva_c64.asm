@@ -2,7 +2,7 @@
 ; MIT License applies, see LICENSE file
 ; TO BE COMPILED WITH 64tass Turbo Assembler Macro V1.54.1900
 ; 64tass.exe -a maluva_c64.asm -o MLV_C64.BIN -b
-; Thanks to Lasse at the lemon64 forums for his invaluable help
+; Thanks to Lasse at the lemon64 forums for his invaluable help. Thanks to Iszell for adapting code to be also compatible with Commodore Plus/4
 
 ; Please notice this is my first ever code usin the 65xx assembler. I have no previous experience so
 ; I haven't worked too much in optimization
@@ -33,25 +33,41 @@
 					BACKGROUND_COLOR = $D021
 					BACKGROUND_COLOR_PLUS4 = $FF19
 
+					DAAD_PRINT_MSG_C64_ES = $1BC0
+					DAAD_PRINT_MSG_C64_EN = $1B78
+
+
+; 					DAAD seems to simulate some Z80 REGS with 0-page addresses
+					BC      	=    253
+					B       	=    254
+					C       	=    253
+					HL      	=    251
+					H       	=    252
+					L       	=    251
+;					Also, DAAD "PRINT" routine expecst data here
+					MSGDATAH   	=     66
+					MSGDATAL   	=     65
 
 
 ; ********************************************************************                        
 ;                                 MAIN
 ; ********************************************************************
 
-; Extern call will bring first parameter in A register and second parameter in X register
+; Extern call will bring first parameter in A register and second parameter in Y register
 
+        	
 Start				PHP							; Save status register
 					SEI 						; Disable interrupt
-					STY 	RegistroY           ; Preserve Y register (who knows what's in)
 					STA     Registro1
-					TXA
-					LDX     Registro1            ; swap X and A , now X has first parameter, and A has second (function number)
+					TYA
+					LDX     Registro1            ; Now X has first parameter, and A has second (function number)
 					CMP 	#0
 					BEQ		LoadImg
+					CMP 	#3
+					BEQ 	+
 					JMP		CleanExit
-
-
++					JMP 	Xmessage				
+					
 
 ; ---- Set the filename
 LoadImg				TXA							; Move first parameter (image number) to A
@@ -85,7 +101,7 @@ PatchSTA3			BIT $ff06
         			LDY #>Filename
 		 			JSR KERNAL_SETNAM
         			LDA #$02				; Logical number
-PatchDrvNum			LDX DRVNUM       			; last used device number
+PatchDrvNum			LDX DRVNUM       		; last used device number
         			BNE SecondaryAddress
         			LDX #$08      			; default to device 8
 SecondaryAddress	LDY #$00      			; not $01 means: load to address stored in file
@@ -157,13 +173,17 @@ Eof        			LDA #$02
 
 PatchSTA2
 CleanExit			BIT $ff3f
-					SEI
 PatchJSR			BIT ConvertColors
 					LDA #$3b
 PatchSTA4			BIT $ff06
-					LDY RegistroY			; Restore original Y value
-					PLP						; Restore status register
+					PLP						; Restore status register (and previous interrupt status as interrupt status is a flag just like Z or C)
 					RTS
+
+
+;-------------------------------------------------------------
+;                             AUX FUNCTIONS
+;-------------------------------------------------------------
+
 
 
 ; Clears Mem at ($AE), as many bytes as the value received in X multuplied by 40, and filling with the value at Y
@@ -270,6 +290,8 @@ PatchPlus4			LDA #$2c
 					STA PatchJSR			 ; JSR $xxxx
 					RTS
 
+PatchPlus4_2 		RTS					
+
 ConvertColors		LDA PTR2
 					STA Registro1
 					LDA #<VIDEORAM_ATTRS_PLUS4
@@ -314,8 +336,121 @@ ConvertColors		LDA PTR2
 					BNE --
 					RTS
 
-Filename			.text 	'00064'          ; 000 will be replaced by location number (i.e. 128, 078, 003)
+; ---------------------------- XMessage
 
+; We get here wih the LSB of the offset at X and the MSB at the next place pointed by 'BC'
+XMessage			STX L
+					INC C
+					BNE +
+					INC B   	; Increase BC, which DAAD uses as PC counter
++					LDY #0
+					LDA (BC), Y   ; Load byte pointed by BC (as X=0)
+					STA H					
+					LSR	
+					LSR	
+					LSR	; Now X has file number
+					LDY #10					
+					JSR Divide
+					CLC							; Clear carry
+					ADC 	#'0'				; inc to ascii equivalence
+					STA XmessageFilename + 1
+					TXA
+					ADC 	#'0'				; inc to ascii equivalence
+					STA XmessageFilename + 0  ; File name string is now ready
+
+; -------           Open Messages file
+
+PatchBIT1_2
+					JSR PatchPlus4_2
+PatchSTA1_2			BIT $ff3e
+					LDA #$0b
+PatchSTA3_2			BIT $ff06
+					LDA #0
+					STA SecondaryAddress2+1  ; SETLFS for open
+					LDA #$02
+        			LDX #<XmessageFilename
+        			LDY #>XmessageFilename
+		 			JSR KERNAL_SETNAM
+        			LDA #$02				; Logical number
+PatchDrvNum_2		LDX DRVNUM       		; last used device number
+        			BNE SecondaryAddress2
+        			LDX #$08      			; default to device 8
+SecondaryAddress2	LDY #$00      			; not $01 means: load to address stored in file
+        			JSR KERNAL_SETLFS
+					JSR KERNAL_OPEN 		; open file
+        			BCC +
+					JMP CleanExit
++					LDX #$02				; Use file #2 for input/output
+        			JSR KERNAL_CHKIN		; Set input to file
+					JSR KERNAL_READST
+        			BNE Eof      
+
+; --------  Simulate fseek					
+					LDA H	
+					AND #$07
+					STA H					; Store with real offset within file
+					ORA L
+					BEQ ReadMsg             ; Ofsset is zero, no fseek		
+
+					LDA H          			; HL now has the real offset within the file, but with MSB (H) increased by 1, which will make the DEC H down here end loop on first decrement
+					INC H					; otherwise, first decrement would turn H int $FF, not zero 
+-					JSR KERNAL_CHRIN		
+					DEC L
+					BNE -
+					DEC H
+					BNE -
+
+; --------- Read message
+ReadMsg				LDA <#XmessageBuffer   ; LSB of XMessageBuffer
+					STA L
+					LDA >#XmessageBuffer   ; MSB of XMessageBuffer
+					STA H
+					LDY #0
+
+ReadMsgLoop			JSR KERNAL_CHRIN		; Read number of attribute lines
+					TAX
+					EOR #$FF
+					CMP #10					; End of message mark
+					BEQ TextLoaded
+					TXA
+					STA (HL), Y
+					INC Y
+					BNE ReadMsgLoop
+					INC H
+					BNE ReadMsgLoop        ; BNE cause I'm sure it's not Zero and is faster and shorter than JMP loop
+
+
+TextLoaded			TXA
+					STA (HL), Y				; Save mark of end of message, now message is at XmessageBuffer
+
+
+; ---------- Print message
+
+					LDA <#XmessageBuffer   		; LSB of XMessageBuffer
+					STA MSGDATAL
+					LDA >#XmessageBuffer   		; LSB of XMessageBuffer
+					STA MSGDATAH				; DAAD print message code expects data here
+					CLI
+					LDA $0810					; Spanish interpreter has a 0x93 at address $0810
+					CMP #$93
+					BNE +
+					JSR DAAD_PRINT_MSG_C64_ES
+					JMP Eof
++					JSR DAAD_PRINT_MSG_C64_EN
+					JMP Eof
+
+
+
+
+
+
+
+
+
+; ------------------------------- Variables and tables  -----------------
+
+Filename			.text 	'00064'          ; 000 will be replaced by location number (i.e. 128, 078, 003)
+XmessageFilename	.text   '00'			 ; 00 will be replaced by file number depending on offset
 bclrtab				.byte $00, $01, $02, $03, $04, $05, $06, $07
 					.byte $08, $09, $02, $01, $01, $05, $0e, $01
 fclrtab				.byte $00, $10, $20, $30, $40, $50, $60, $70
@@ -330,3 +465,6 @@ Registro1			.byte 0
 Registro2           .byte 0
 ; ------------------------------------ Variables to preserve register Y while extern is running
 RegistroY			.byte 0			
+;------------------------
+XmessageBuffer		.fill   511
+XmessageBufferLast  .byte 0			; .fill doesn't work if there is nothing after the fill, so instead of a 512 bytes fill, I do 511 and then a "db"
