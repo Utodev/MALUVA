@@ -35,7 +35,8 @@
 
 					DAAD_PRINT_MSG_C64_ES = $1BC0
 					DAAD_PRINT_MSG_C64_EN = $1B78
-
+					DAAD_PRINT_MSG_PLUS4_ES = $1BFC
+					DAAD_PRINT_MSG_PLUS4_EN = $1B67
 
 ; 					DAAD seems to simulate some Z80 REGS with 0-page addresses
 					BC      	=    253
@@ -166,6 +167,9 @@ LoadAttrs			LDA #<VIDEORAM_ATTRS
 PatchAttrs3 		LDA #>VIDEORAM_ATTRS
         			STA PTR+1
 					JSR ReadCompressedBlock
+PatchJSR=*+1
+					LDA #$2c
+					STA PatchJSR1
 
 Eof        			LDA #$02
         			JSR KERNAL_CLOSE  		; close file
@@ -173,9 +177,11 @@ Eof        			LDA #$02
 
 PatchSTA2
 CleanExit			BIT $ff3f
-PatchJSR			BIT ConvertColors
+PatchJSR1			BIT ConvertColors
 					LDA #$3b
 PatchSTA4			BIT $ff06
+                    LDA #$2c
+					STA PatchJSR1
 					PLP						; Restore status register (and previous interrupt status as interrupt status is a flag just like Z or C)
 					RTS
 
@@ -288,6 +294,16 @@ PatchPlus4			LDA #$2c
 					
 					LDA #$20
 					STA PatchJSR			 ; JSR $xxxx
+					LDA #$74				 ; SDIplus4 magic byte
+					STA PatchCMP
+					LDA #<DAAD_PRINT_MSG_PLUS4_ES
+					STA PatchJSR2
+					LDA #>DAAD_PRINT_MSG_PLUS4_ES
+					STA PatchJSR2+1
+					LDA #<DAAD_PRINT_MSG_PLUS4_EN
+					STA PatchJSR3
+					LDA #>DAAD_PRINT_MSG_PLUS4_EN
+					STA PatchJSR3+1
 					RTS
 
 PatchPlus4_2 		RTS					
@@ -432,20 +448,15 @@ TextLoaded			TXA
 					STA MSGDATAH				; DAAD print message code expects data here
 					CLI
 					LDA $0810					; Spanish interpreter has a 0x93 at address $0810
+PatchCmp=*+1
 					CMP #$93
 					BNE +
+PatchJSR2=*+1
 					JSR DAAD_PRINT_MSG_C64_ES
 					JMP Eof
+PatchJSR3=*+1
 +					JSR DAAD_PRINT_MSG_C64_EN
 					JMP Eof
-
-
-
-
-
-
-
-
 
 ; ------------------------------- Variables and tables  -----------------
 
