@@ -18,6 +18,7 @@
 			define F_CLOSE 			$9b
 			define F_READ  			$9d
 			define F_WRITE 			$9e       
+			define F_SEEK			$9f       
 			define FA_READ 			$01
 			define FA_WRITE			$02
 			define FA_CREATE_AL		$0C
@@ -41,16 +42,19 @@
 			define INTERPRETER_ADDRESS $6000  	; Address where the interpreter is loaded
 
 			define DAAD_READ_FILENAME_ES $7056	; DAAD function to request a file name
-			define DAAD_READ_FILENAME_EN $6FF6	; DAAD function to request a file name
+			define DAAD_READ_FILENAME_EN $6FF6	
 
 			define DAAD_SYSMESS_ES 	  $6DE8 	; DAAD function to print a system message
-			define DAAD_SYSMESS_EN 	  $6D94 	; DAAD function to print a system message
+			define DAAD_SYSMESS_EN 	  $6D94 	
 
 			define DAAD_FILENAME_ADDR_ES $70B5 ; DAAD function where the file name read by DAAD_READ_FILENAME_ES is stored
-			define DAAD_FILENAME_ADDR_EN $7055 ; DAAD function where the file name read by DAAD_READ_FILENAME_ES is stored
+			define DAAD_FILENAME_ADDR_EN $7055 
+
+			define DAAD_PRINTMSG_ADDR_ES $6DF1 ; DAAD function that prints the message pointed by HL
+			define DAAD_PRINTMSG_ADDR_EN $6D90
 
 			define DAAD_PATCH_ES $707A		    ; Address where the interpreter sets the internal flag which makes the words be cutted when printed
-			define DAAD_PATCH_EN $701A			; Address where the interpreter sets the internal flag which makes the words be cutted when printed	
+			define DAAD_PATCH_EN $701A			
 
 
 ; ********************************************************************                        
@@ -85,6 +89,8 @@ Init				LD 	D, A		; Preserve first parameter
 					JP 	Z, SaveGame
 					CP 	2
 					JP 	Z, LoadGame
+					CP  3
+					JP 	Z, XMessage
 					JP 	cleanExit
 ; ---- Set the filename
 LoadImg
@@ -254,7 +260,7 @@ OpenMode            LD      B, FA_READ		; May be modified by FA_CREATE_AL above
 					RST     $08			
 					DB      F_OPEN      
 					JR      C, diskFailure
-					LD 	(SavegameHandle+1), A
+					LD 		(CloseFile+1), A
 ; --- read or write file
 
 					POP	IX			; Gets IX value back from stack, then push again
@@ -265,7 +271,7 @@ ReadWrite           DB      F_READ     		; May be modified by F_WRITE ABOVE
 					JR	C, diskFailure
                       
 
-SavegameHandle		LD 	A, $FF			; That $FF will be modifed by code above
+CloseFile			LD 	A, $FF			; That $FF will be modifed by code above
 					RST     $08
                     DB      F_CLOSE
 
@@ -276,7 +282,49 @@ diskFailure			LD 	L, 57			; E/S error
 DAADSysmesCall		CALL    DAAD_SYSMESS_ES
 					JR 	cleanExit
 			
+XMessage			LD 		L, D ;  LSB at L
+					POP 	IX
+					POP 	BC
+					INC 	BC	 ; We need not only to increase BC, but also make sure when exiting it returns increased, and cleanExit will restore it from stack so we have to update valus at stack
+					PUSH 	BC
+					PUSH 	IX
+					LD 		A, (BC)
+					LD 		H, A ; MSB AT H, so Message address at HL
+					LD	 	(XMessBuffer), HL   ; Preserve file offset, using the buffer as temporary address
+					CALL 	setDefaultDisk
+					JR 		C, diskFailure
+; Open file					
+	                LD      B, FA_READ   
+					LD   	IX, XMESSFilename
+					RST     $08
+                    DB      F_OPEN      
+                    JR      C, cleanExit
+					LD 		(CloseFile+1),A ; Preserve file handle to be able to close it later
+					LD 		(XmessReadFile+1),A ; Preserve file handle to be able to read from it
+; Seek file					
+					LD		DE, (XMessBuffer)	 ; Restore file offset
+					LD 		BC, 0   			; BCDE --> Offset 
+					LD 		IXL, 0    			; L=0 --> Seek from start
+					RST 	$08
+					DB 		F_SEEK
+					JR 		C, CloseFile
 
+; Read file					
+					LD 		IX, XMessBuffer
+					LD      BC, 512
+XmessReadFile		LD 		A, $FF; // Self modified above
+					RST     $08
+					DB      F_READ  ; Read 
+
+; At this point we have the message at XmessBuffer		
+XmessPrintMessage	POP 	BC
+					SET 	6, (IX-01)  ; Required by DAAD to print messages
+					PUSH 	BC
+					LD 		HL, XMessBuffer
+					EI
+CallPrintMsg		CALL	DAAD_PRINTMSG_ADDR_ES					
+					DI
+					JR 		CloseFile  
 
 
 ; ********************************************************************                        
@@ -329,6 +377,8 @@ PatchForEnglish			LD HL, DAAD_READ_FILENAME_EN
 						LD(cleanSaveName+1), HL
 						LD A, $C9						; Also patch the "ask for a file name" function so it doesn't make the words be cutted between lines after calling it (patch is RET replacing a RES 6,(IX-$0a))
 						LD (DAAD_PATCH_EN), A
+						LD HL, DAAD_PRINTMSG_ADDR_EN    ; Path the DAAD "PrintText" function
+						LD (CallPrintMsg+1), HL
 						RET
 
 ; ** Set attributes in ULA Layer in the zone below Layer 2 to 00, to virtually disable transparency
@@ -358,5 +408,5 @@ PaletteVal				DB 	0
 FileHandle				DB	0
 SaveLoadFilename		DB 	"PLACEHOLD.SAV",0
 SaveLoadExtension		DB 	".SAV", 0
-
-
+XMESSFilename			DB  "0.XMB",0
+XMessBuffer				DS 512

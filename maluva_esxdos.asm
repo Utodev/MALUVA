@@ -16,7 +16,8 @@
 			define F_OPEN  		$9a
 			define F_CLOSE 		$9b
 			define F_READ  		$9d
-			define F_WRITE 		$9e       
+			define F_WRITE 		$9e
+			define F_SEEK		$9f       
 			define FA_READ 		$01
 			define FA_WRITE		$02
 			define FA_CREATE_AL	$0C
@@ -27,16 +28,19 @@
 			define VRAM_ATTR_ADDR     VRAM_ADDR + $1800 ;  points to attributes zone in VRAM 
 
 			define DAAD_READ_FILENAME_ES $7056	; DAAD function to request a file name
-			define DAAD_READ_FILENAME_EN $6FF6	; DAAD function to request a file name
+			define DAAD_READ_FILENAME_EN $6FF6	;
 
 			define DAAD_SYSMESS_ES 	  $6DE8 ; DAAD function to print a system message
-			define DAAD_SYSMESS_EN 	  $6D94 ; DAAD function to print a system message
+			define DAAD_SYSMESS_EN 	  $6D94 
 
 			define DAAD_FILENAME_ADDR_ES $70B5 ; DAAD function where the file name read by DAAD_READ_FILENAME_ES is stored
-			define DAAD_FILENAME_ADDR_EN $7055 ; DAAD function where the file name read by DAAD_READ_FILENAME_ES is stored
+			define DAAD_FILENAME_ADDR_EN $7055 
+
+			define DAAD_PRINTMSG_ADDR_ES $6DF1 ; DAAD function that prints the message pointed by HL
+			define DAAD_PRINTMSG_ADDR_EN $6D90
 
 			define DAAD_PATCH_ES $707A		    ; Address where the interpreter sets the internal flag which makes the words be cutted when printed
-			define DAAD_PATCH_EN $701A			; Address where the interpreter sets the internal flag which makes the words be cutted when printed	
+			define DAAD_PATCH_EN $701A			
 
 
 ; ********************************************************************                        
@@ -50,7 +54,6 @@ Start
 
 ; ------ Detect if english or spanish interpreter
 					PUSH 	AF
-					PUSH 	BC
 					LD 		A, (INTERPRETER_ADDRESS+1)
 					CP 		$55			
 					JR		NZ, Spanish				 ; In english interpreter, the patch will be applied everytime the extern is called. Although that may 
@@ -58,8 +61,7 @@ Start
 					JR 		LangCont
 Spanish				LD 		A, $C9					; (RET)
 					LD      (DAAD_PATCH_ES), A 		; Patching the "ask for file name" routine so it doesn't break the words the nwriting messages afterwards
-LangCont			POP		BC						 ; already applied. It takes milliseconds and no one could notice when playing anyway
-					POP 	AF
+LangCont			POP 	AF
 
 			
 Init				LD 	D, A		; Preserve first parameter
@@ -71,6 +73,8 @@ Init				LD 	D, A		; Preserve first parameter
 					JP 	Z, SaveGame
 					CP 	2
 					JP 	Z, LoadGame
+					CP  3
+					JP 	Z, XMessage
 					JP 	cleanExit
 ; ---- Set the filename
 LoadImg
@@ -110,7 +114,7 @@ LoadImg
                     LD      D,A	
 
 ; --- read header
-					LD 	IX, IMGNumLine
+					LD 	IX, ImgNumLine
 					PUSH 	DE
 					PUSH 	BC
 					LD      BC, 1
@@ -118,7 +122,7 @@ LoadImg
 					DB      F_READ     
 					POP 	BC
 					POP 	DE
-					LD 	A, (IMGNumLine) ; A register contains number of lines now
+					LD 	A, (ImgNumLine) ; A register contains number of lines now
                                             
 
 ; read data - for Spectrum we start by reading  as much thirds of screen as possible, in the first byte of file the number of lines appears, so if there is carry when comparing to 64,
@@ -158,15 +162,15 @@ drawWholeThirds		LD 	B, H
 ;     BC register,and then just read BC bytes 8 times, increasin IX (pointing to VRAM) by 256 each time to point to the next line inside the row
 
 
-drawPartialThird    ADD	A, 64		; restore the remaining number of lines (last SUB went negative)                
-                    OR 	A
-                    JR 	Z,readAttr	; if A = 0, then there were exactly  64, 128, or 192 lines, just jump to attributes section	
-					ADD	A, A
-					ADD	A, A		; A=A*4. Will never exceed 1 byte as max value for lines is 63, and 63*4 = 252
-					LD 	B, 0
-					LD 	C, A		; BC = number of bytes to read each time (numlines/ 8 x 32). 
-					LD 	E, 8		; Times to do the loop, will be used as counter. We don't use B and DJNZ cause we need BC all the time and in the end is less productive
-drawLoop			LD 	A, D 		; file handle
+drawPartialThird    ADD		A, 64		; restore the remaining number of lines (last SUB went negative)                
+                    OR 		A
+                    JR 		Z, readAttr	; if A = 0, then there were exactly  64, 128, or 192 lines, just jump to attributes section	
+					ADD		A, A
+					ADD		A, A		; A=A*4. Will never exceed 1 byte as max value for lines is 63, and 63*4 = 252
+					LD 		B, 0
+					LD 		C, A		; BC = number of bytes to read each time (numlines/ 8 x 32). 
+					LD 		E, 8		; Times to do the loop, will be used as counter. We don't use B and DJNZ cause we need BC all the time and in the end is less productive
+drawLoop			LD 		A, D 		; file handle
 					PUSH 	DE
 					PUSH 	IX
 					RST     $08
@@ -180,42 +184,42 @@ drawLoop			LD 	A, D 		; file handle
 ; read the attributes 
 
 readAttr			XOR 	A
-					LD	H, A
-					LD 	A, (IMGNumLine)	; restore number of lines
-					LD 	L, A			; now HL = number of lines 
+					LD		H, A
+					LD 		A, (ImgNumLine)	; restore number of lines
+					LD 		L, A			; now HL = number of lines 
 					ADD 	HL, HL
 					ADD 	HL, HL			; Multiply by 4 (32 bytes of attributes per each 8 lines  = means 4 per line)
 					PUSH 	HL
 					POP 	BC
-					LD 	IX, VRAM_ATTR_ADDR	; attributes VRAM
-					LD 	A, D 			; file handle
+					LD 		IX, VRAM_ATTR_ADDR	; attributes VRAM
+					LD 		A, D 			; file handle
 					PUSH	DE
 					RST 	$08
-					DB 	F_READ
-					POP	DE
+					DB 		F_READ
+					POP		DE
 
 ; ---- Close file	
-					LD 	A, D
+					LD 		A, D
 					RST     $08
                     DB      F_CLOSE
 	
-cleanExit			EI
-					POP 	IX
+cleanExit			POP 	IX
 					POP 	BC
+					EI
 					RET
 
 ; Both read savegame and load savegame use the same code, that is just slightly modified before jumping in the common part at DoReadOrWrite
 
-LoadGame			LD  A, FA_READ
-					LD	(OpenMode+1),A
-					LD  A, F_READ
-					LD 	(ReadWrite),A
-					JR	DoReadOrWrite
+LoadGame			LD  	A, FA_READ
+					LD		(OpenMode+1),A
+					LD  	A, F_READ
+					LD 		(ReadWrite),A
+					JR		DoReadOrWrite
 
-SaveGame			LD  A, FA_CREATE_AL
-					LD 	(OpenMode+1),A
-					LD  A, F_WRITE
-					LD 	(ReadWrite),A
+SaveGame			LD  	A, FA_CREATE_AL
+					LD 		(OpenMode+1),A
+					LD  	A, F_WRITE
+					LD 		(ReadWrite),A
 
 
 DoReadOrWrite		
@@ -234,29 +238,72 @@ OpenMode            LD      B, FA_READ		; May be modified by FA_CREATE_AL above
 					RST     $08			
 					DB      F_OPEN      
 					JR      C, diskFailure
-					LD 	(SavegameHandle+1), A
+					LD 		(CloseFile+1), A
 ; --- read or write file
 
-					POP	IX			; Gets IX value back from stack, then push again
+					
+					POP		IX			; Gets IX value back from stack, then push again
 					PUSH 	IX
-					LD 	BC, 512			; Save flags and objects
+					LD 		BC, 512			; Save flags and objects
  					RST     $08
-ReadWrite           DB      F_READ     		; May be modified by F_WRITE ABOVE
-					JR	C, diskFailure
+ReadWrite         	DB      F_READ     		; May be modified by F_WRITE ABOVE
+					JR		C, diskFailure
                       
 
-SavegameHandle		LD 	A, $FF			; That $FF will be modifed by code above
+CloseFile			LD 		A, $FF			; That $FF will be modifed by code above
 					RST     $08
-                    DB      F_CLOSE
+                 	DB      F_CLOSE
 
 
-					JR 	cleanExit	
+					JR 		cleanExit	
 
-diskFailure			LD 	L, 57			; E/S error
+diskFailure			LD 		L, 57			; E/S error
 DAADSysmesCall		CALL    DAAD_SYSMESS_ES
-					JR 	cleanExit
+					JR 		cleanExit
 			
 
+XMessage			LD 		L, D ;  LSB at L
+					POP 	IX
+					POP 	BC
+					INC 	BC	 ; We need not only to increase BC, but also make sure when exiting it returns increased, and cleanExit will restore it from stack so we have to update valus at stack
+					PUSH 	BC
+					PUSH 	IX
+					LD 		A, (BC)
+					LD 		H, A ; MSB AT H, so Message address at HL
+					LD	 	(XMessBuffer), HL   ; Preserve file offset, using the buffer as temporary address
+					CALL 	setDefaultDisk
+					JR 		C, diskFailure
+; Open file					
+	                LD      B, FA_READ   
+					LD   	IX, XMESSFilename
+					RST     $08
+                    DB      F_OPEN      
+                    JR      C, cleanExit
+					LD 		(CloseFile+1),A ; Preserve file handle to be able to close it later
+					LD 		(XmessReadFile+1),A ; Preserve file handle to be able to read from it
+; Seek file					
+					LD		DE, (XMessBuffer)	 ; Restore file offset
+					LD 		BC, 0   			; BCDE --> Offset 
+					LD 		IXL, 0    			; L=0 --> Seek from start
+					RST 	$08
+					DB 		F_SEEK
+
+; Read file					
+					LD 		IX, XMessBuffer
+					LD      BC, 512
+XmessReadFile		LD 		A, $FF; // Self modified above
+					RST     $08
+					DB      F_READ  ; Read 
+
+; At this point we have the message at XmessBuffer		
+XmessPrintMessage	POP 	IX
+					SET 	6, (IX-01)  ; Required by DAAD to print messages
+					PUSH 	IX
+					LD 		HL, XMessBuffer
+					EI
+CallPrintMsg		CALL	DAAD_PRINTMSG_ADDR_ES					
+					DI
+					JR CloseFile  
 
 
 ; ********************************************************************                        
@@ -309,12 +356,15 @@ PatchForEnglish			LD HL, DAAD_READ_FILENAME_EN
 						LD(cleanSaveName+1), HL
 						LD A, $C9						; Also patch the "ask for a file name" function so it doesn't make the words be cutted between lines after calling it (patch is RET replacing a RES 6,(IX-$0a))
 						LD (DAAD_PATCH_EN), A
+						LD HL, DAAD_PRINTMSG_ADDR_EN    ; Path the DAAD "PrintText" function
+						LD (CallPrintMsg+1), HL
 						RET
 
 
 Filename				DB 	"UTO.ZXS",0
-IMGNumLine				DB 	0
+ImgNumLine					DB 	0
 SaveLoadFilename		DB 	"PLACEHOLD.SAV",0
 SaveLoadExtension		DB 	".SAV", 0
-
+XMESSFilename			DB  "0.XMB",0
+XMessBuffer				DS 512
 
