@@ -33,7 +33,7 @@
 					BACKGROUND_COLOR = $D021
 					BACKGROUND_COLOR_PLUS4 = $FF19
 
-					DAAD_PRINT_MSG_C64_ES = $1BC0
+					DAAD_PRINT_MSG_C64_ES = $1C0D
 					DAAD_PRINT_MSG_C64_EN = $1B78
 
 
@@ -235,12 +235,12 @@ TextLoaded			TXA
 					LDA >#XmessageBuffer   		; LSB of XMessageBuffer
 					STA MSGDATAH				; DAAD print message code expects data here
 					CLI
-					LDA $0810					; Spanish interpreter has a 0x93 at address $0810
-					CMP #$93
+					LDA $0810					; Spanish interpreter has a 0x85 at address $0810, while English one has a 0xDC
+					CMP #$DC
 					BNE +
-					JSR DAAD_PRINT_MSG_C64_ES
+					JSR DAAD_PRINT_MSG_C64_EN
 					JMP Eof
-+					JSR DAAD_PRINT_MSG_C64_EN
++					JSR DAAD_PRINT_MSG_C64_ES
 					JMP Eof
 
 
