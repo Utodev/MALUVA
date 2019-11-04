@@ -89,30 +89,11 @@ LoadImg				TXA							; Move first parameter (image number) to A
 					ADC 	#'0'				; inc to ascii equivalence
 					STA     Filename+1
 
-PatchBIT1
-OpenImgFile			JSR PatchPlus4
-PatchSTA1			BIT $ff3e
-					LDA #$0b
-PatchSTA3			BIT $ff06
-					LDA #0
-					STA SecondaryAddress+1  ; SETLFS for open
-					LDA #$05
-        			LDX #<Filename
-        			LDY #>Filename
-		 			JSR KERNAL_SETNAM
-        			LDA #$02				; Logical number
-PatchDrvNum			LDX DRVNUM       		; last used device number
-        			BNE SecondaryAddress
-        			LDX #$08      			; default to device 8
-SecondaryAddress	LDY #$00      			; not $01 means: load to address stored in file
-        			JSR KERNAL_SETLFS
-					JSR KERNAL_OPEN 		; open file
-        			BCC +
-					JMP CleanExit
-+					LDX #$02				; Use file #2 for input/output
-        			JSR KERNAL_CHKIN		; Set input to file
-					JSR KERNAL_READST
-        			BNE Eof      			; either EOF or read error
+        			LDX 	#<Filename
+        			LDY 	#>Filename
+					LDA     #5
+					JSR 	OpenFile
+
 					JSR KERNAL_CHRIN		; Read number of attribute lines
 					STA Registro1			; Save number of attr lines
 					JSR KERNAL_READST		; Read file status
@@ -180,9 +161,127 @@ PatchSTA4			BIT $ff06
 					RTS
 
 
+; ---------------------------- XMessage
+
+; We get here wih the LSB of the offset at X and the MSB at the next place pointed by 'BC'
+XMessage			STX L
+					INC C
+					BNE +
+					INC B   	; Increase BC, which DAAD uses as PC counter
++					LDY #0
+					LDA (BC), Y   ; Load byte pointed by BC (as X=0)
+					STA H					
+					LSR	
+					LSR	
+					LSR	; Now X has file number
+					LDY #10					
+					JSR Divide
+					CLC							; Clear carry
+					ADC 	#'0'				; inc to ascii equivalence
+					STA XmessageFilename + 1
+					TXA
+					ADC 	#'0'				; inc to ascii equivalence
+					STA XmessageFilename + 0  ; File name string is now ready
+
+; -------           Open Messages file
+        			LDX #<XmessageFilename
+        			LDY #>XmessageFilename
+					LDA #2
+					JSR OpenFile
+
+; --------  Simulate fseek					
+					LDA H	
+					AND #$07
+					STA H					; Store with real offset within file
+					ORA L
+					BEQ ReadMsg             ; Ofsset is zero, no fseek		
+
+					LDA H          			; HL now has the real offset within the file, but with MSB (H) increased by 1, which will make the DEC H down here end loop on first decrement
+					INC H					; otherwise, first decrement would turn H int $FF, not zero 
+-					JSR KERNAL_CHRIN		
+					DEC L
+					BNE -
+					DEC H
+					BNE -
+
+; --------- Read message
+ReadMsg				LDA <#XmessageBuffer   ; LSB of XMessageBuffer
+					STA L
+					LDA >#XmessageBuffer   ; MSB of XMessageBuffer
+					STA H
+					LDY #0
+
+ReadMsgLoop			JSR KERNAL_CHRIN		; Read number of attribute lines
+					TAX
+					EOR #$FF
+					CMP #10					; End of message mark
+					BEQ TextLoaded
+					TXA
+					STA (HL), Y
+					INC Y
+					BNE ReadMsgLoop
+					INC H
+					BNE ReadMsgLoop        ; BNE cause I'm sure it's not Zero and is faster and shorter than JMP loop
+
+
+TextLoaded			TXA
+					STA (HL), Y				; Save mark of end of message, now message is at XmessageBuffer
+
+
+; ---------- Print message
+
+					LDA <#XmessageBuffer   		; LSB of XMessageBuffer
+					STA MSGDATAL
+					LDA >#XmessageBuffer   		; LSB of XMessageBuffer
+					STA MSGDATAH				; DAAD print message code expects data here
+					CLI
+					LDA $0810					; Spanish interpreter has a 0x93 at address $0810
+					CMP #$93
+					BNE +
+					JSR DAAD_PRINT_MSG_C64_ES
+					JMP Eof
++					JSR DAAD_PRINT_MSG_C64_EN
+					JMP Eof
+
+
+
+
 ;-------------------------------------------------------------
 ;                             AUX FUNCTIONS
 ;-------------------------------------------------------------
+
+; Opens file whose name it's at X-Y and length at A				
+
+OpenFile			STY RegistroY
+					STX RegistroX
+					PHA
+PatchBIT1			JSR PatchPlus4
+PatchSTA1			BIT $ff3e
+					LDA #$0b
+PatchSTA3			BIT $ff06
+					LDA #0
+					STA SecondaryAddress+1  ; SETLFS for open
+					PLA
+					LDX RegistroX
+					LDY RegistroY
+		 			JSR KERNAL_SETNAM
+        			LDA #$02				; Logical number
+PatchDrvNum			LDX DRVNUM       		; last used device number
+        			BNE SecondaryAddress
+        			LDX #$08      			; default to device 8
+SecondaryAddress	LDY #$00      			; not $01 means: load to address stored in file
+        			JSR KERNAL_SETLFS
+					JSR KERNAL_OPEN 		; open file
+        			BCC +
+					PLA						; Just to clear stack return value
+					JMP CleanExit
++					LDX #$02				; Use file #2 for input/output
+        			JSR KERNAL_CHKIN		; Set input to file
+					JSR KERNAL_READST
+        			BNE OpenFileError		; either EOF or read error
+					RTS
+OpenFileError		PLA						; Just to clear stack return value
+					JMP Eof					
 
 
 
@@ -336,110 +435,6 @@ ConvertColors		LDA PTR2
 					BNE --
 					RTS
 
-; ---------------------------- XMessage
-
-; We get here wih the LSB of the offset at X and the MSB at the next place pointed by 'BC'
-XMessage			STX L
-					INC C
-					BNE +
-					INC B   	; Increase BC, which DAAD uses as PC counter
-+					LDY #0
-					LDA (BC), Y   ; Load byte pointed by BC (as X=0)
-					STA H					
-					LSR	
-					LSR	
-					LSR	; Now X has file number
-					LDY #10					
-					JSR Divide
-					CLC							; Clear carry
-					ADC 	#'0'				; inc to ascii equivalence
-					STA XmessageFilename + 1
-					TXA
-					ADC 	#'0'				; inc to ascii equivalence
-					STA XmessageFilename + 0  ; File name string is now ready
-
-; -------           Open Messages file
-
-PatchBIT1_2
-					JSR PatchPlus4_2
-PatchSTA1_2			BIT $ff3e
-					LDA #$0b
-PatchSTA3_2			BIT $ff06
-					LDA #0
-					STA SecondaryAddress2+1  ; SETLFS for open
-					LDA #$02
-        			LDX #<XmessageFilename
-        			LDY #>XmessageFilename
-		 			JSR KERNAL_SETNAM
-        			LDA #$02				; Logical number
-PatchDrvNum_2		LDX DRVNUM       		; last used device number
-        			BNE SecondaryAddress2
-        			LDX #$08      			; default to device 8
-SecondaryAddress2	LDY #$00      			; not $01 means: load to address stored in file
-        			JSR KERNAL_SETLFS
-					JSR KERNAL_OPEN 		; open file
-        			BCC +
-					JMP CleanExit
-+					LDX #$02				; Use file #2 for input/output
-        			JSR KERNAL_CHKIN		; Set input to file
-					JSR KERNAL_READST
-        			BNE Eof      
-
-; --------  Simulate fseek					
-					LDA H	
-					AND #$07
-					STA H					; Store with real offset within file
-					ORA L
-					BEQ ReadMsg             ; Ofsset is zero, no fseek		
-
-					LDA H          			; HL now has the real offset within the file, but with MSB (H) increased by 1, which will make the DEC H down here end loop on first decrement
-					INC H					; otherwise, first decrement would turn H int $FF, not zero 
--					JSR KERNAL_CHRIN		
-					DEC L
-					BNE -
-					DEC H
-					BNE -
-
-; --------- Read message
-ReadMsg				LDA <#XmessageBuffer   ; LSB of XMessageBuffer
-					STA L
-					LDA >#XmessageBuffer   ; MSB of XMessageBuffer
-					STA H
-					LDY #0
-
-ReadMsgLoop			JSR KERNAL_CHRIN		; Read number of attribute lines
-					TAX
-					EOR #$FF
-					CMP #10					; End of message mark
-					BEQ TextLoaded
-					TXA
-					STA (HL), Y
-					INC Y
-					BNE ReadMsgLoop
-					INC H
-					BNE ReadMsgLoop        ; BNE cause I'm sure it's not Zero and is faster and shorter than JMP loop
-
-
-TextLoaded			TXA
-					STA (HL), Y				; Save mark of end of message, now message is at XmessageBuffer
-
-
-; ---------- Print message
-
-					LDA <#XmessageBuffer   		; LSB of XMessageBuffer
-					STA MSGDATAL
-					LDA >#XmessageBuffer   		; LSB of XMessageBuffer
-					STA MSGDATAH				; DAAD print message code expects data here
-					CLI
-					LDA $0810					; Spanish interpreter has a 0x93 at address $0810
-					CMP #$93
-					BNE +
-					JSR DAAD_PRINT_MSG_C64_ES
-					JMP Eof
-+					JSR DAAD_PRINT_MSG_C64_EN
-					JMP Eof
-
-
 
 
 
@@ -464,7 +459,8 @@ flumtab				.byte $00, $07, $03, $04, $03, $04, $01, $06
 Registro1			.byte 0
 Registro2           .byte 0
 ; ------------------------------------ Variables to preserve register Y while extern is running
+RegistroX			.byte 0			
 RegistroY			.byte 0			
-;------------------------
+;------------------------ Buffer is left last on purpose, so in case someone does not use xmessages, the binary file can be cutted to have 512 bytes less
 XmessageBuffer		.fill   511
 XmessageBufferLast  .byte 0			; .fill doesn't work if there is nothing after the fill, so instead of a 512 bytes fill, I do 511 and then a "db"
