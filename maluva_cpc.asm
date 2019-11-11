@@ -44,6 +44,8 @@ Start
 
 						CP 		3
 						JP 		Z, XMessage
+						CP  	4
+						JP  	Z, XPart
 						CP 		255
 						JP 		Z, RestoreXMessage
 						OR 		A
@@ -169,6 +171,13 @@ cleanExit2				EI
 						RET
 
 
+XPart 					LD 		A, D
+						OR 		A
+						JR 		Z, cleanExit
+						LD 		A, 50
+						LD 		(XpartPart),A    ; If parameter != 0, then XPART equals 50 so files are in the range 50-81 instead of 0-31
+						JR 		cleanExit
+
 XMessage				LD 		L, D   ; First parameter (LSB) to L
 						POP 	IX
 						POP 	BC
@@ -182,6 +191,10 @@ XMessage				LD 		L, D   ; First parameter (LSB) to L
 						SRL		A
 						SRL		A
 						SRL		A					; Now A contains the file number
+						LD 		B,A
+						LD 		A, (XpartPart)
+						ADD     B
+
 						CALL 	DivByTen
 						ADD 	'0';
 						LD 		(XMESSFilename+1), A
@@ -243,7 +256,7 @@ XMessage				LD 		L, D   ; First parameter (LSB) to L
 						LD 		BC, FakeCondacts - 1		; Make DAAD "PC" point to our fake condacts
 						PUSH 	BC
 						PUSH 	IX
-						JR 		FileLoaded  ; Close file and exit
+						JP 		FileLoaded  ; Close file and exit
 
 						; So this is an unreachable (by the Z80 CPU) piece of codem which is actually DAAD code 
 FakeCondacts			DB 		$4D, 0, 	$3D, 0, $FF   ; MES 0 EXTERN 0 255
@@ -341,4 +354,4 @@ AuxVar					DW 	0
 XMESSFilename			DB  "00.XMB"
 PreserveFirstMES		DW 0
 PreserveBC				DW 0
-
+XpartPart				DB 0

@@ -63,6 +63,8 @@ Start				PHP							; Save status register
 					LDX     Registro1            ; Now X has first parameter, and A has second (function number)
 					CMP 	#0
 					BEQ		LoadImg
+					CMP 	#4
+					BEQ     XPart
 					CMP 	#3
 					BEQ 	+
 					JMP		CleanExit
@@ -161,6 +163,14 @@ PatchSTA4			BIT $ff06
 					RTS
 
 
+; ----------------------------- Xpart --- Handles wich part (part 1 or part 2 of the game is being played)
+
+XPart 				TXA
+					BEQ CleanExit	; If part == 0 just ignore
+					LDA #50
+					STA XPartPart
+					JMP CleanExit
+
 ; ---------------------------- XMessage
 
 ; We get here wih the LSB of the offset at X and the MSB at the next place pointed by 'BC'
@@ -173,7 +183,9 @@ XMessage			STX L
 					STA H					
 					LSR	
 					LSR	
-					LSR	; Now X has file number
+					LSR	; Now A has file number (based on first file is 00)
+					CLC	
+					ADC XPartPart ; Now A has fiel number + 50 if part is not first part
 					LDY #10					
 					JSR Divide
 					CLC							; Clear carry
@@ -455,6 +467,7 @@ blumtab				.byte $00, $70, $30, $40, $30, $40, $10, $60
 flumtab				.byte $00, $07, $03, $04, $03, $04, $01, $06
 					.byte $03, $00, $04, $02, $04, $06, $04, $05
 
+XPartPart			.byte 0
 ; ------------------------------------ Additional memory address used as auxiliary register
 Registro1			.byte 0
 Registro2           .byte 0

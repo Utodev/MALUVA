@@ -55,6 +55,8 @@ Start
                         JP      Z, loadGame
                         CP      3
                         JP      Z, xMessage
+						CP  4
+						JP  Z, XPart
                         JP      cleanExit
 
 ; ---- Set the filename
@@ -306,6 +308,15 @@ createFile              CALL    prepareFCB
                         LD      DE, FCB
                         CALL    BDOS                  
                         RET
+
+; XPart function
+XPart				    LD 		A, D
+					    ADD		'0'
+					    LD      (XMESSFilename), A
+					    JP 		cleanExit
+
+
+
 ; Xmessage printing
 xMessage			    LD 		L, D ;  LSB at L
 				    	POP 	IX

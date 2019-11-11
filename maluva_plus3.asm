@@ -80,6 +80,9 @@ Init					LD 	D, A		; Preserve first parameter
 						JP 	Z, LoadGame
 						CP  3
 						JP 	Z, XMessage
+						CP  4
+						JP  Z, XPart
+
 
 						JP 	cleanExit
 ; ---- Set the filename
@@ -270,7 +273,13 @@ diskFailure				CALL pageOutDOS
 DAADSysmesCall			CALL    DAAD_SYSMESS_ES
 						JR	 	cleanExit
 
-			
+
+XPart					LD 		A, D
+						ADD		'0'
+						LD      (XMESSFilename), A
+						JR 		cleanExit
+
+
 XMessage				LD 		L, D ;  LSB at L
 						POP 	IX
 						POP 	BC

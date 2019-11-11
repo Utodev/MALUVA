@@ -91,6 +91,8 @@ Init				LD 	D, A		; Preserve first parameter
 					JP 	Z, LoadGame
 					CP  3
 					JP 	Z, XMessage
+					CP  4
+					JP  Z, XPart
 					JP 	cleanExit
 ; ---- Set the filename
 LoadImg
@@ -281,7 +283,13 @@ CloseFile			LD 	A, $FF			; That $FF will be modifed by code above
 diskFailure			LD 	L, 57			; E/S error
 DAADSysmesCall		CALL    DAAD_SYSMESS_ES
 					JR 	cleanExit
-			
+
+XPart				LD 		A, D
+					ADD		'0'
+					LD      (XMESSFilename), A
+					JR 		cleanExit
+
+
 XMessage			LD 		L, D ;  LSB at L
 					POP 	IX
 					POP 	BC
