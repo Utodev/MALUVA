@@ -28,6 +28,7 @@
 			define BUFFER2K_ADDR			$0040
 			define TWO_KILOBYTES   			$0800
 			define VRAM_ADDR 				$C000 ; The video RAM address
+			define TIME						$B8B4 ; Auto-increment address
 
 
 ; ********************************************************************                        
@@ -46,6 +47,8 @@ Start
 						JP 		Z, XMessage
 						CP  	4
 						JP  	Z, XPart
+						CP 		5
+						JP  	Z, XBeep
 						CP 		255
 						JP 		Z, RestoreXMessage
 						OR 		A
@@ -176,7 +179,108 @@ XPart 					LD 		A, D
 						JR 		Z, cleanExit
 						LD 		A, 50
 						LD 		(XpartPart),A    ; If parameter != 0, then XPART equals 50 so files are in the range 50-81 instead of 0-31
-						JR 		cleanExit
+						JR 		cleanExit2
+
+
+; XBeep , beep replacement
+
+XBeep				    LD 		L, D    ; First parameter (duration) to L					
+						POP 	IX
+						POP 	BC
+						INC 	BC
+						LD 		A, (BC) ; Third parameter (tone) to A
+                        LD      E, A
+						XOR 	A
+						LD 		D, A  ;  At this point, DE=tone, L=duration
+						PUSH 	BC
+						PUSH 	IX
+
+						LD   IX,sfxFreqAY - 48	; DE=get frequency from tone table
+						ADD  IX,DE
+						LD   E,(IX+0)
+						LD   D,(IX+1)
+
+
+						XOR  A					; REG#0 ChannelA Tone LowByte
+						LD 	 C, E
+						CALL SetAYREG
+						LD   A, 1				; REG#1 ChannelA Tone HighByte
+						LD   C, D
+						CALL SetAYREG
+
+						LD   A, 8				; REG#8 ChannelA Volume to 8
+						LD   C, A
+						CALL SetAYREG
+
+						LD   A,7				; REG#7 Mixer enable ChannelA
+						LD   C,00111110b
+						CALL SetAYREG
+
+BeepSilence				EX   DE,HL
+						SRL  E
+						CALL NZ,SilenceWait
+					
+						LD   A,7				; REG#7 Mixer disable ChannelA
+						LD   C,00111111b
+						CALL SetAYREG
+
+						JP   cleanExit2
+
+SilenceWait									; Wait for E = 1/50 seconds
+                        
+						LD  HL,TIME			; Cogemos la address donde se cuenta el tiempo en 1/50sec
+
+						
+loop0					LD  B, 6
+loopA					LD  A,(HL)
+loop1					EI
+						CP  (HL)
+						JR  Z,loop1
+						DI
+						DJNZ loopA
+						DEC E
+						JR  NZ,loop0
+						RET
+
+; A = port, C = Value
+SetAYREG				PUSH BC
+			            LD 	 B, $F4
+						LD 	 C, A
+						OUT  (C), C  ; Register
+
+						LD 	 BC, $F6C0 ; Select Register
+						OUT  (C), C
+
+						LD 	 BC, $F600 ; Inactive
+						OUT  (C), C
+
+						LD 	 BC, $F680 ; Wtite Value
+						OUT  (C), C
+
+						POP BC
+			            LD 	 B, $F4
+						OUT  (C), C   ; F4 value
+
+
+						LD 	 BC, $F600 ; Inactive
+						OUT  (C), C
+						RET						
+
+
+
+; Frequencies table
+sfxFreqAY				DW	0xD65, 0xC9D, 0xBEB, 0xB42, 0xA9A, 0xA04, 0x971, 0x8E8, 0x86B, 0x7E2, 0x77F, 0x719	// Octave 1 (48-70) 
+						DW	0x6B3, 0x64E, 0x5F5, 0x5A1, 0x54D, 0x502, 0x4B9, 0x474, 0x434, 0x3F9, 0x3C0, 0x38C	// Octave 2 (72-98)
+						DW	0x359, 0x327, 0x2F6, 0x2D1, 0x2A7, 0x281, 0x25C, 0x23A, 0x21A, 0x1FD, 0x1E0, 0x1C6, // Octave 3 (96-118) 
+						DW	0x1AD, 0x194, 0x17D, 0x168, 0x153, 0x141, 0x12E, 0x11D, 0x10D, 0x0FE, 0x0F0, 0x0E3  // Octave 4 (120-142)
+						DW	0x0D6, 0x0CA, 0x0BF, 0x0B4, 0x0AA, 0x0A0, 0x097, 0x08F, 0x087, 0x07F, 0x078, 0x072	// Octave 5 (144-166) 
+						DW	0x06B, 0x065, 0x05F, 0x05A, 0x055, 0x050, 0x04C, 0x047, 0x043, 0x040, 0x03C, 0x039	// Octave 6 (168-190)
+						DW	0x036, 0x033, 0x030, 0x02D, 0x02A, 0x028, 0x026, 0x024, 0x022, 0x020, 0x01E, 0x01C	// Octave 7 (192-214) 
+						DW	0x01B, 0x019, 0x018, 0x017, 0x015, 0x014, 0x013, 0x012, 0x011, 0x010, 0x00F, 0x00E  // Octave 8 (216-238)
+
+
+
+
 
 XMessage				LD 		L, D   ; First parameter (LSB) to L
 						POP 	IX
