@@ -1,5 +1,5 @@
 ; MALUVA (C) 2018 Uto
-; MIT License applies, see LICENSE file
+; LGPL License applies, see LICENSE file
 ; TO BE COMPILED WITH 64tass Turbo Assembler Macro V1.54.1900
 ; 64tass.exe -a maluva_c64.asm -o MLV_C64.BIN -b
 ; Thanks to Lasse at the lemon64 forums for his invaluable help. Thanks to Iszell for adapting code to be also compatible with Commodore Plus/4

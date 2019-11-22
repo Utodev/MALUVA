@@ -1,5 +1,5 @@
 ; MALUVA (C) 2018 Uto, 
-; MIT License applies, see LICENSE file
+; LGPL License applies, see LICENSE file
 ; TO BE COMPILED WITH SJASMPLUS
 
 
@@ -165,9 +165,9 @@ SaveGame			CALL 	askWhichSavegameSlot
 ; *******************************************************************
 
 
-; —------------------------------------------------------------------------------------—-------------
+; ï¿½------------------------------------------------------------------------------------ï¿½-------------
 ; This routine ask the user to type a slot number 1-8, and if successful returns slot minus one (0-7)  
-; —--------------------------------------------------------------------------------------------------
+; ï¿½--------------------------------------------------------------------------------------------------
 askWhichSavegameSlot		EI
 				CALL 	DAAD_ASK_FILENAME	; Ask for savegame slot number
 				DI

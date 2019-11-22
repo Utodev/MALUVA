@@ -1,6 +1,6 @@
 
 ; MALUVA for MSX (C) 2018 FX, Armando Perez Abad & Uto
-; MIT License applies, see LICENSE file
+; LGPL License applies, see LICENSE file
 ; TO BE COMPILED WITH SJASMPLUS
 
 
