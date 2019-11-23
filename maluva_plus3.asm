@@ -1,5 +1,5 @@
 ; MALUVA (C) 2018 Uto
-; LGPL License applies, see LICENSE file
+; MIT License applies, see LICENSE file
 ; TO BE COMPILED WITH SJASMPLUS
 ; Thanks to Boriel for his 8 bits division code in ZX-Basic, DivByTen function is based on his code.
 ; Also thanks to Wilco2009, whose help with the +3DOS routines has been absolutely needed!
@@ -289,7 +289,6 @@ XMessage				LD 		L, D ;  LSB at L
 						LD 		A, (BC)
 						LD 		H, A ; MSB AT H, so Message address at HL
 						LD	 	(XMessBuffer), HL   ; Preserve file offset, using the buffer as temporary address
-						CALL 	searchXmessCache
 
 						CALL pageinDOS
 						CALL P3DOS_INITIALISE
@@ -325,77 +324,20 @@ XMessage				LD 		L, D ;  LSB at L
 						CALL pageOutDOS
 				
 ; At this point we have the message at XmessBuffer		
-						LD 		HL, XMessBuffer
-						CALL 	XmessPrintMessage
-						JP 		cleanExit  
-
-; Prints what is pointed by HL
 XmessPrintMessage		POP 	IX
 						SET 	6, (IX-01) ; Required by DAAD to print messages
 						PUSH 	IX
+						LD 		HL, XMessBuffer
 						EI
 CallPrintMsg			CALL	DAAD_PRINTMSG_ADDR_ES					
 						DI
-						RET
-						
-
-; The cache is one full 16K page, which is subdivided in 512 byte slots, so there are 32 caché slots
-; The XmessCache area contains the offsets which originaly came in the EXTERN call, so they can be compared and if there is a match, we know where the message was preserved
-; So we search the offset, and if found the excution moves to PrintCacheMessage, otherwise we just return so the normal "read from disk" procedure is executed
-
-searchXmessCache		LD DE, XmessCache
-						LD B,  32
-searchXmessLoop			LD A, (DE)
-						CP L
-						JR NZ, nextSearch
-						INC DE
-						LD A, (DE)
-						CP H
-						JR NZ, nextSearch2
-searchMatch				LD A, 8
-						SUB B
-						CALL PrintCacheMessage
-nextSearch				INC DE						
-nextSearch2				INC DE						
-						DJNZ searchXmessLoop
-						RET
-
-; Enters with B = subslot, but upside down. So if B=32, then it's first subslot (ofset 0), if B=31, second subslot (offset 512), etc.
-PrintCacheMessage		
-
-						LD 		A, 32
-						SUB 	B		; Now A has the real slot (A=0 => offset 0, A=1 => offset 512, A=2 => offset 1024, etc.)
-						CALL 	Mul512					
-						PUSH 	HL		; Preserve subslot	offset
-; ---- Page in cache page
-FALTA
-
-; ---- Calculate offset (multiply by 512, which is multiply B)
-						POP 	HL   	; Restore subslot offset
-						POP  	BC
-						POP  	BC	  ; This two POP just discard two CALL return addresses as we will no return
-						CALL 	XmessPrintMessage
-
-; ------ Page out cache page				
-FALTA
-FALTA TAMBIEN METER COSAS EN cACHE CUANDO TOQUE
-
-						JP   cleanExit
-
-
+						JP 		cleanExit  
 
 
 
 ; ********************************************************************                        
 ;                           AUX FUNCTIONS
 ; *******************************************************************
-
-;*** Receives value in A, returns value x512 in HL
-Mul512					SLA A
-						LD H, A
-						LD L, 0
-						RET
-
 
 ;** Functions to page in ROM/RAM for DOS Calls
 pageinDOS				ld   BC,$7FFD       ;the horizontal ROM switch/RAM switch I/O address
@@ -446,8 +388,6 @@ PatchForEnglish			LD HL, DAAD_READ_FILENAME_EN
 
 Filename				DB 	"UTO.ZXS",$FF
 XMESSFilename			DB  "0.XMB",$FF
-XmessCache				DW $FFFF, $FFFF, $FFFF, $FFFF,  $FFFF, $FFFF, $FFFF, $FFFF, $FFFF, $FFFF, $FFFF, $FFFF,  $FFFF, $FFFF, $FFFF, $FFFF, $FFFF, $FFFF, $FFFF, $FFFF,  $FFFF, $FFFF, $FFFF, $FFFF, $FFFF, $FFFF, $FFFF, $FFFF,  $FFFF, $FFFF, $FFFF, $FFFF ; Empty Cache area, 
-XmessCachePtr			DB 0
 XMessBuffer				DS 512
 
 
