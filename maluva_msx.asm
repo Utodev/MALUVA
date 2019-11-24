@@ -35,8 +35,6 @@
                         define DAAD_SYSMESS             $B402
                         define DAAD_FILENAME_ADDR_ES    $C011
                         define DAAD_FILENAME_ADDR_EN    $BFB1
-                        define DAAD_PRINT_MSG_ES        $BDF0
-                        define DAAD_PRINT_MSG_EN        $BD9D
 
             			define JIFFY					$FC9E ; The timer variable
 
