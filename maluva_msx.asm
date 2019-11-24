@@ -35,6 +35,8 @@
                         define DAAD_SYSMESS             $B402
                         define DAAD_FILENAME_ADDR_ES    $C011
                         define DAAD_FILENAME_ADDR_EN    $BFB1
+                        define DAAD_PRINT_MSG_ES        $BDF0
+                        define DAAD_PRINT_MSG_EN        $BD9D
 
             			define JIFFY					$FC9E ; The timer variable
 
@@ -61,6 +63,8 @@ Start
 						JP      Z, XPart
 						CP 		5
 						JP 		Z, XBeep
+						CP 		255
+						JP 		Z, RestoreXMessage
                         JP      cleanExit
 
 ; ---- Set the filename
@@ -427,14 +431,56 @@ xMessage			    LD 		L, D ;  LSB at L
                         CALL    BDOS
 
 ; ------- Print message 
-                        LD      HL, WorkBuffer
-                        CALL    $BD9D
+                        ; OK, this below needs to be explained: I didn't find a way to call the DAAD function to print text and make it work with an xmessage already loaded in RAM. Everything
+						; worked but the \n or  #n carriage return. The function was at address $1629 in the spanish interpreter. Then I decided to do the following: try to make the text
+						; being printed by the MES condact, and to do that I as going to execute a MES condact. How do I do that?
+						; 1) I modified first entry in the messages offsets table, preserving the value there before, to the address where the xmessage is loaded in RAM
+						; 2) I was udpating BC and making sure it is returned modified to the stack. DAAD uses BC as it's internal "PC" register, so changing BC actually makes DAAD run 
+						;    opcodes somewhere else. I pointed it to a zone in RAM (see below) where I already had sorted two condacts: MES 0, and EXTERN 0 255. MES 0 prints the text 
+						;    using MES condact and then EXTERN 0 255...
+						; 3) is another function in Maluva I'm using to restore the Message 0 pointer, and restoring BC, so the execution continues just after the XMES/XMESSAGE call
 
 
-; ------- Close File
+						LD 		HL, $0110      ; DAAD Header pointer to MESSAGES table
+						LD 		E, (HL)
+						INC 	HL
+						LD 		D, (HL)
+						EX      HL, DE		   ; HL points to message pointers table
+						LD 		E, (HL)
+						INC		HL
+						LD 		D, (HL)  		; Now DE has the value of first message pointer, and HL points to where that pointer is
+
+						LD      (PreserveFirstMES),DE
+						LD		DE, WorkBuffer
+						LD 		(HL), D
+						DEC		HL
+						LD 		(HL), E			; Store the offset at first message pointer 
+
+						POP 	IX
+						POP 	BC
+						LD 		(PreserveBC), BC
+						LD 		BC, FakeCondacts - 1		; Make DAAD "PC" point to our fake condacts
+						PUSH 	BC
+						PUSH 	IX
+
                         JP      cleanAndClose
 
+						; So this is an unreachable (by the Z80 CPU) piece of codem which is actually DAAD code 
+FakeCondacts			DB 		$4D, 0,     $3D, 0, $FF   ; MES 0 EXTERN 0 255
 
+                        
+RestoreXMessage			LD 		HL, $0110      ; DAAD Header pointer to MESSAGES table
+						LD 		E, (HL)
+						INC 	HL
+						LD 		D, (HL)
+						LD 		HL, PreserveFirstMES
+						LDI
+						LDI
+						POP 	IX
+						POP 	BC
+						LD 		BC, (PreserveBC)
+						EI
+						RET
           
 
 ; ---------------------------------------------------------------------------
@@ -460,6 +506,8 @@ DivByTenNoSub
 ImageFilename           DB      "000     MS2"
 SavegameFilename        DB      "UTO     SAV"        
 XMESSFilename			DB      "0       XMB"
+PreserveFirstMES		DW      0
+PreserveBC				DW      0
 WorkBuffer              DS      $200                                                ; WE only need $100 for the pictures buffer but we are using $200 for XMEssages, so we 
 
 
