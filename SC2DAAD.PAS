@@ -77,7 +77,7 @@ BEGIN
 	END;
     IF uppercase(target)='C64'	THEN
     BEGIN
-		WriteLn('For C64 you will require an Art Studio .ART file (90002 bytes), a dump of C64 High Resolution mode.');
+		WriteLn('For C64 you will require an Art Studio .ART file (9002 bytes), a dump of C64 High Resolution mode.');
 		Writeln();
 		WriteLn('You should specify the number of lines from top you want to include in the image. Number of lines should be a multiple of 8.');
 		Writeln();
