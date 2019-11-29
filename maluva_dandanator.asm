@@ -2,6 +2,10 @@
 ; LGPL License applies, see LICENSE file
 ; TO BE COMPILED WITH SJASMPLUS
 
+; Important note: this is a preliminary work on Maluva for Dandanator for ZX Spectrum. It has worked ofr XPICTURE,
+; but other Maluva functions has not been created, and the code is partially abandoned, or actually waiting for
+; someone to make use of it
+
 
 ; Notes: 
 ; Dandanator can page any of its 32 slots over $0000-$3999, and the original ROM if the slot selected is slot 33
