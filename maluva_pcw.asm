@@ -40,7 +40,7 @@ Start
 						CP      4
 						JR      Z, XPart
 						CP 		255
-						JP 		Z, RestoreXMessage
+						JP 		Z, PreserveFirstSYSMESMessage
                         JR      cleanExit
 
 cleanAndClose           CALL closeFile
@@ -69,53 +69,63 @@ XBeep				    LD 		L, D    ; First parameter (duration) to L
                         LD      E, A
 						XOR 	A
 						LD 		D, A  ;  At this point, DE=tone, L=duration
+						LD 		H, A
 						PUSH 	BC
 						PUSH 	IX
 
-						LD   IX,sfxFreqPSG - 48	; DE=get frequency from tone table
-						ADD  IX,DE
-						LD   E,(IX+0)
-						LD   D,(IX+1)
-
-						LD   C,$A1
-
-						XOR  A					; REG#0 ChannelA Tone LowByte
-						OUT  ($A0),A
-						OUT  (C),E
-						INC  A					; REG#1 ChannelA Tone HighByte
-						OUT  ($A0),A
-						OUT  (C),D
-
-						LD   A,8				; REG#8 ChannelA Volume to 8
-						OUT  ($A0),A
-						OUT  (C),A
-
-						LD   A,7				; REG#7 Mixer enable ChannelA
-						OUT  ($A0),A
-						LD   A,00111110b
-						OUT  ($A1),A
-
-BeepSilence				EX   DE,HL
-						SRL  E
-						CALL NZ,SilenceWait
-					
-						LD   A,7				; REG#7 Mixer disable ChannelA
-						OUT  ($A0),A
-						LD   A,00111111b
-						OUT  ($A1),A
-
-						JP   cleanExit
-
-SilenceWait									; Wait for E = 1/50 seconds
-                        EI
-						LD  HL,JIFFY			; Cogemos la address donde se cuenta el tiempo en 1/50sec
-loop0					LD  A,(HL)
-loop1					CP  (HL)
-						JR  Z,loop1
-						DEC E
-						JR  NZ,loop0
-                        DI
+						LD   	IX,sfxFreqPSG - 48	; DE=get frequency from tone table
+						ADD  	IX,DE
+						LD   	E,(IX+0)
+						LD   	D,(IX+1)			; Now HL= duration, DE=frequency
+						CALL 	buzzer 											
+						LD 	 	A, 12
+						OUT		($F8),A				; Silence buzzer
 						RET
+
+buzzer 					LD 		A, L				; Preserve L
+						SRL 	L
+						SRL 	L
+						CPL
+						AND 	3
+						LD 		C,A
+						LD 		B,0
+						LD 		IX, buzzDelay
+						ADD		IX, BC
+						LD 		A, 11
+buzzDelay				NOP
+						NOP						
+						NOP						
+						INC 	B
+						INC 	C
+beepLoop				DEC     C
+						JR 		NZ, beepLoop
+						LD 		C, $3F
+
+						DEC 	B
+						JR 		NZ, beepLoop
+						INC 	A
+						CP 		13
+						JR  	NZ, cnLoop
+
+
+						DEC 	A
+						DEC 	A
+cnLoop					OUT 	($F8),A
+
+						LD 		B,H
+						LD 		C,A
+						CP 		11
+						JR 		NZ, anotherBeep
+						LD 		A, D
+						OR 		E
+						RET 	NZ
+						LD 		A, C
+						LD 		C, L
+						DEC 	DE
+						JP      (IX)
+anotherBeep				LD 		C, L
+						INC 	C
+						JP      (IX)
 
 ; Frequencies table
 sfxFreqPSG				DW	0xD65, 0xC9D, 0xBEB, 0xB42, 0xA9A, 0xA04, 0x971, 0x8E8, 0x86B, 0x7E2, 0x77F, 0x719	// Octave 1 (48-70) 
@@ -201,11 +211,11 @@ ReadLoop                LD      (FCB+$21), HL                   ; Define file of
 						; 3) is another function in Maluva I'm using to restore the Message 0 pointer, and restoring BC, so the execution continues just after the XMES/XMESSAGE call
 
 
-						LD 		HL, $0110      ; DAAD Header pointer to MESSAGES table
+						LD 		HL, $0112      ; DAAD Header pointer to SYSMESS table
 						LD 		E, (HL)
 						INC 	HL
 						LD 		D, (HL)
-						EX      HL, DE		   ; HL points to message pointers table
+						EX      HL, DE		   ; HL points to SYSMESS pointers table
 						LD 		E, (HL)
 						INC		HL
 						LD 		D, (HL)  		; Now DE has the value of first message pointer, and HL points to where that pointer is
@@ -227,10 +237,10 @@ ReadLoop                LD      (FCB+$21), HL                   ; Define file of
 						JP      cleanAndClose  ; Close file and exit
 
 						; So this is an unreachable (by the Z80 CPU) piece of codem which is actually DAAD code 
-FakeCondacts			DB 		$4D, 0,     $3D, 0, $FF   ; MES 0 EXTERN 0 255
+FakeCondacts			DB 		$36, 0,     $3D, 0, $FF   ; SYSMESS 0 EXTERN 0 255
 
                         
-RestoreXMessage			LD 		HL, $0110      ; DAAD Header pointer to MESSAGES table
+PreserveFirstSYSMESMessage			LD 		HL, $0112      ; DAAD Header pointer to SYSMESS table
 						LD 		E, (HL)
 						INC 	HL
 						LD 		D, (HL)

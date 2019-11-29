@@ -439,16 +439,16 @@ xMessage			    LD 		L, D ;  LSB at L
 						; 3) is another function in Maluva I'm using to restore the Message 0 pointer, and restoring BC, so the execution continues just after the XMES/XMESSAGE call
 
 
-						LD 		HL, $0110      ; DAAD Header pointer to MESSAGES table
+						LD 		HL, $0112      ; DAAD Header pointer to SYSMESS table
 						LD 		E, (HL)
 						INC 	HL
 						LD 		D, (HL)
-						EX      HL, DE		   ; HL points to message pointers table
+						EX      HL, DE		   ; HL points to SYSMESS pointers table
 						LD 		E, (HL)
 						INC		HL
 						LD 		D, (HL)  		; Now DE has the value of first message pointer, and HL points to where that pointer is
 
-						LD      (PreserveFirstMES),DE
+						LD      (PreserveFirstSYSMES),DE
 						LD		DE, WorkBuffer
 						LD 		(HL), D
 						DEC		HL
@@ -464,14 +464,14 @@ xMessage			    LD 		L, D ;  LSB at L
                         JP      cleanAndClose
 
 						; So this is an unreachable (by the Z80 CPU) piece of codem which is actually DAAD code 
-FakeCondacts			DB 		$4D, 0,     $3D, 0, $FF   ; MES 0 EXTERN 0 255
+FakeCondacts			DB 		$36, 0,     $3D, 0, $FF   ; SYSMESS 0 EXTERN 0 255
 
                         
-RestoreXMessage			LD 		HL, $0110      ; DAAD Header pointer to MESSAGES table
+RestoreXMessage			LD 		HL, $0112      ; DAAD Header pointer to SYSMESS table
 						LD 		E, (HL)
 						INC 	HL
 						LD 		D, (HL)
-						LD 		HL, PreserveFirstMES
+						LD 		HL, PreserveFirstSYSMES
 						LDI
 						LDI
 						POP 	IX
@@ -504,7 +504,7 @@ DivByTenNoSub
 ImageFilename           DB      "000     MS2"
 SavegameFilename        DB      "UTO     SAV"        
 XMESSFilename			DB      "0       XMB"
-PreserveFirstMES		DW      0
+PreserveFirstSYSMES		DW      0
 PreserveBC				DW      0
 WorkBuffer              DS      $200                                                ; WE only need $100 for the pictures buffer but we are using $200 for XMEssages, so we 
 

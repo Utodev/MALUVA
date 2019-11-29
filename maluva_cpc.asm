@@ -339,16 +339,16 @@ XMessage				LD 		L, D   ; First parameter (LSB) to L
 						ADD 	HL, DE
 						PUSH 	HL			; Preserve the offset where the xmessage has been loaded
 						
-						LD 		HL, $2890      ; DAAD Header pointer to MESSAGES table
+						LD 		HL, $2892      ; DAAD Header pointer to SYSMESS table
 						LD 		E, (HL)
 						INC 	HL
 						LD 		D, (HL)
-						EX      HL, DE		   ; HL points to message pointers table
+						EX      HL, DE		   ; HL points to sysmess  pointers table
 						LD 		E, (HL)
 						INC		HL
 						LD 		D, (HL)  		; Now DE has the value of first message pointer, and HL points to where that pointer is
 
-						LD      (PreserveFirstMES),DE
+						LD      (PreserveFirstSYSMES),DE
 						POP		DE				; Restore the message offset
 						LD 		(HL), D
 						DEC		HL
@@ -363,16 +363,16 @@ XMessage				LD 		L, D   ; First parameter (LSB) to L
 						JP 		FileLoaded  ; Close file and exit
 
 						; So this is an unreachable (by the Z80 CPU) piece of codem which is actually DAAD code 
-FakeCondacts			DB 		$4D, 0, 	$3D, 0, $FF   ; MES 0 EXTERN 0 255
+FakeCondacts			DB 		$36, 0, 	$3D, 0, $FF   ; SYSMESS 0 EXTERN 0 255
 
 						
 
 
-RestoreXMessage			LD 		HL, $2890      ; DAAD Header pointer to MESSAGES table
+RestoreXMessage			LD 		HL, $2892      ; DAAD Header pointer to SYSMESS table
 						LD 		E, (HL)
 						INC 	HL
 						LD 		D, (HL)
-						LD 		HL, PreserveFirstMES
+						LD 		HL, PreserveFirstSYSMES
 						LDI
 						LDI
 						POP 	IX
@@ -456,6 +456,6 @@ Filename				DB 	"000.CPC"
 ScansPer2kBuffer		DB 	0
 AuxVar					DW 	0
 XMESSFilename			DB  "00.XMB"
-PreserveFirstMES		DW 0
+PreserveFirstSYSMES		DW 0
 PreserveBC				DW 0
 XpartPart				DB 0
