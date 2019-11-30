@@ -82,6 +82,11 @@ loadImg                 LD      A, D
                         LD      (HL),A
 
 
+   						LD A, $FF               ; If a file was open, then the workbuffer  is going to be overwritten by the picture, so any Xmessage loaded there will be corruted, we set last XMessage file to 255 to avoid data to be used
+						LD (LastOffset), A	
+						LD (LastOffset+1), A	
+
+
 ; --- Open file        
                         LD      HL, ImageFilename                    
                         CALL    openFile                        ; Prepares the FCB and opens the file
@@ -402,7 +407,17 @@ xMessage			    LD 		L, D ;  LSB at L
 				    	PUSH 	IX
 				    	LD 		A, (BC)
 				    	LD 		H, A ; MSB AT H, so Message address at HL
-                        LD      (WorkBuffer), HL
+
+
+						LD 		IX, (LastOffset)  ; Let's check if it's same message than last time
+						CP 		IXH
+						JR 		NZ, NotSameMessage
+						LD 		A, L
+						CP 		IXL
+						JR 		Z, XmessPrintMessage  ;If same offset, just print again
+
+
+NotSameMessage          LD      (LastOffset), HL
                         
 ; ------- Open file      
 
@@ -416,7 +431,7 @@ xMessage			    LD 		L, D ;  LSB at L
 
 ; ------- Seek File              
 
-                        LD      HL, (WorkBuffer)
+                        LD      HL, (LastOffset)
                         LD      (FCB+33), HL                     ; At FCB+33 there is a 32 bit value meaning the offest of the file
                         XOR     A
                         LD      (FCB+35),A
@@ -439,7 +454,7 @@ xMessage			    LD 		L, D ;  LSB at L
 						; 3) is another function in Maluva I'm using to restore the Message 0 pointer, and restoring BC, so the execution continues just after the XMES/XMESSAGE call
 
 
-						LD 		HL, $0112      ; DAAD Header pointer to SYSMESS table
+XmessPrintMessage   	LD 		HL, $0112      ; DAAD Header pointer to SYSMESS table
 						LD 		E, (HL)
 						INC 	HL
 						LD 		D, (HL)
@@ -506,6 +521,7 @@ SavegameFilename        DB      "UTO     SAV"
 XMESSFilename			DB      "0       XMB"
 PreserveFirstSYSMES		DW      0
 PreserveBC				DW      0
+LastOffset              DW      $FFFF
 WorkBuffer              DS      $200                                                ; WE only need $100 for the pictures buffer but we are using $200 for XMEssages, so we 
 
 

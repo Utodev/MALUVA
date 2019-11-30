@@ -82,6 +82,9 @@ LoadPicture				LD 	A, D		; Restore first parameter
                         JP 	NC, cleanExit
                         JP 	Z, cleanExit
 
+						LD A, $FF
+						LD (LastXmessFile), A	; If a file was open, then the 2K buffer is going to be overwritten by the picture, so any Xmessage loaded there will be corruted, we set last XMessage file to 255 to avoid data to be used
+
                         DEC	HL
                         DEC 	HL			; after opening file, DE points to ASMDOS header, but 2 bytes below the header
                         PUSH 	HL			; the header it's the current reading pointer when reading from buffer  with CAS_IN_CHAR
@@ -299,6 +302,16 @@ XMessage				LD 		L, D   ; First parameter (LSB) to L
 						LD 		A, (XpartPart)
 						ADD     B
 
+						LD 		B, A				;Check if file loaded is the same than last time, to avoid loading again						
+						LD 		A, (LastXmessFile)
+						CP 		B
+						JR 		Z, AlreadyInRAM
+
+						LD 		A, B				; Otherwise save current file to be read as last read file
+						LD		(LastXmessFile),A
+						
+						
+
 						CALL 	DivByTen
 						ADD 	'0';
 						LD 		(XMESSFilename+1), A
@@ -320,7 +333,7 @@ XMessage				LD 		L, D   ; First parameter (LSB) to L
 						CALL 	CAS_IN_CHAR  ; Although this is supposed to read only one char, in fact it reads one char in A, and a whole 2K at the BUFFER2K_ADDR
 
 
-						LD 		DE, (AuxVar) ; Restore Global Offset
+AlreadyInRAM			LD 		DE, (AuxVar) ; Restore Global Offset
 						LD 		A, D
 						AND 	7
 						LD 		D, A 		  ; Remove first 5 bits to get the offset within this specific file
@@ -459,3 +472,4 @@ XMESSFilename			DB  "00.XMB"
 PreserveFirstSYSMES		DW 0
 PreserveBC				DW 0
 XpartPart				DB 0
+LastXmessFile			DB 255

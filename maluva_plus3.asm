@@ -288,7 +288,16 @@ XMessage				LD 		L, D ;  LSB at L
 						PUSH    IX
 						LD 		A, (BC)
 						LD 		H, A ; MSB AT H, so Message address at HL
-						LD	 	(XMessBuffer), HL   ; Preserve file offset, using the buffer as temporary address
+
+						LD 		IX, (LastOffset)  ; Let's check if it's same message than last time
+						CP 		IXH
+						JR 		NZ, NotSameMessage
+						LD 		A, L
+						CP 		IXL
+						JR 		Z, XmessPrintMessage  ;If same offset, just print again
+
+
+NotSameMessage			LD	 	(LastOffset), HL   ; Preserve file offset, using the buffer as temporary address
 
 						CALL pageinDOS
 						CALL P3DOS_INITIALISE
@@ -303,7 +312,7 @@ XMessage				LD 		L, D ;  LSB at L
 
 ; Seek file						
 						LD 		B,0
-						LD      HL, (XMessBuffer)   ; Restore offset
+						LD      HL, (LastOffset)   ; Restore offset
 						LD 		E, B                 ; E-HL = offset
 					    CALL	P3DOS_SET_POSITION
 
@@ -388,6 +397,7 @@ PatchForEnglish			LD HL, DAAD_READ_FILENAME_EN
 
 Filename				DB 	"UTO.ZXS",$FF
 XMESSFilename			DB  "0.XMB",$FF
+LastOffset				DW 	$FFFF
 XMessBuffer				DS 512
 
 
