@@ -224,7 +224,7 @@ BEGIN
 		Seek(inFile, 39+128);
 		Blockread(inFile, Palette[3], 1);
 	EXCEPT
-		on E: Exception DO Error('PAL file not found or not valid, the .PAL file for the image should be located at same folder than SCR file.' + E.Message);
+		on E: Exception DO Error('PAL file not found or not valid, the .pal file for the image should be located at same folder than SCR file. If your OS is case sensitive, make sure the PAL file has the extension in lowercase.' + E.Message);
 	END; 
 	CloseFile(inFile);
 
