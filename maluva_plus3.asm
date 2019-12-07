@@ -148,6 +148,7 @@ LoadImg
 nextThird	        SUB 	64
 					JR 		C, drawWholeThirds ; if there is still no carry, it's a full screen (3 thirds)
 					ADD		HL, BC	           ; read one, two or the three whole thirds
+					SUB 	64					
 drawWholeThirds		PUSH 	HL
 					POP 	BC 					; Number of bytes to copy at BC
 					LD 		HL, $C001			; origin
