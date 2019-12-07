@@ -197,6 +197,7 @@ VAR i, bytesToRead, current2KBuffercount: word;
 	CheckSum: Word;
 	ScansPer2kBuffer: Byte;
 	FileSize : Word;
+	Readed: Longint;
 	(* 
 	 CPC FILE FORMAT IS (after the AMSDOS header):
 	 00    : scans per 2k buffer, 
@@ -282,7 +283,7 @@ BEGIN
 		current2KBuffercount := 7;
 	    FOR i:= 1 TO 8 DO
 		BEGIN
-		 	Blockread(inFile, TempBuffer, TWO_KILOBYTES);
+		 	Blockread(inFile, TempBuffer, TWO_KILOBYTES, Readed);
 		 	BlockWrite(outFile, TempBuffer, BytesToRead);
 		 	current2KBuffercount := current2KBuffercount + bytesToRead;
 		 	IF (current2KBuffercount+bytesToRead > TWO_KILOBYTES) THEN
