@@ -36,6 +36,8 @@
 						define DEL_FAST_TICKER			 $BCE6
 						define FIRMWARE_MODE_NUMBER		 $B7C3
 						define DAAD_FAST_TICK_SPACE		 $A609  ;  This is a small area I've found, that is just after the frame flyback area
+						define UPPER_MODE				 0 ; default upper mode in split screen 
+						define LOWER_MODE				 2 ; default lower mode in split screen 
 
 
 ; ********************************************************************                        
@@ -573,7 +575,7 @@ InterruptHandler		PUSH BC
 
 ; ------------   Set Mode Upper Screen
 						DI
-IntPatch1U				LD 	A, 0
+IntPatch1U				LD 	A, UPPER_MODE
 						OR  $8C
    						LD  B, $7F  
    						OUT (C), A
@@ -582,7 +584,7 @@ IntPatch1U				LD 	A, 0
 						EXX
 
 						LD 	HL, FIRMWARE_MODE_NUMBER ; Set mode to lower part mode
-IntPatch2L				LD	(HL),2   ; Make sure FW is printing text in lower screen mode, always. Please notice text may be being printed at any time, so in case we change mode unadvertedly, part of the text will show wrong
+IntPatch2L				LD	(HL),LOWER_MODE   ; Make sure FW is printing text in lower screen mode, always. Please notice text may be being printed at any time, so in case we change mode unadvertedly, part of the text will show wrong
 
 ;PUES NO SE QUE LECHES PASA QUE SI CAMBIO ESE 2 POR UNA A salen mal los textos
 
@@ -622,8 +624,8 @@ LoopWait				NOP
 
 ; ------------   Set Mode Bottom
 						LD 	HL, FIRMWARE_MODE_NUMBER
-IntPatch4L				LD	(HL),2   ; Make sure FW is printing text in mode [dynamically modified], always
-IntPatch3L				LD  A, 2
+IntPatch4L				LD	(HL), LOWER_MODE   ; Make sure FW is printing text in mode [dynamically modified], always
+IntPatch3L				LD  A, LOWER_MODE
 						OR $8C 
    						LD  B, $7F  
    						OUT (C), A
