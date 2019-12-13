@@ -186,7 +186,7 @@ BEGIN
 	CloseFile(outFile);
 END;	
 
-PROCEDURE CPC(inputFilename, outputFilename: string; lines:word;NumPaletteEntries:byte);
+PROCEDURE CPC(inputFilename, outputFilename: string; lines:word);
 VAR i, bytesToRead, current2KBuffercount: word;
 	palFileName:String;
 	inFile, outFile: FILE;
@@ -198,14 +198,15 @@ VAR i, bytesToRead, current2KBuffercount: word;
 	ScansPer2kBuffer: Byte;
 	FileSize : Word;
 	Readed: Longint;
+	Offset: Word;
 	(* 
 	 CPC FILE FORMAT IS (after the AMSDOS header):
 	 00    : scans per 2k buffer, 
-	 01-04 : palette used, first one is for background, second one for text ink
-	 05-06  :number of lines multiplied by 10, that is, number of bytes per scanline
-	 07-   : data as in a SCR file, but with less lines - or not.
+	 01-16 : palette used, first one is for background, second one for text ink
+	 17-18  :number of lines multiplied by 10, that is, number of bytes per scanline
+	 19-   : data as in a SCR file, but with less lines - or not.
 
-	 Exception: 200 lines graphic contains 16384 bytes, 16384 for data, and 4 for palette, but the palette is over the last 4 bytes of data, where
+	 Exception: 200 lines graphic contains 16384 bytes, 16384 for data, and 16 for palette, but the palette is over the last 16 bytes of data, where
 	 the spare 48 bytes are. 16384 in CPC header and use CAS_IN_DIRECT to load directly to VRAM, then set the palette (better set all palette to black first
 	 to avoid strange colours on screen)
 	 *)
@@ -215,14 +216,13 @@ BEGIN
 	AssignFile(inFile, palFileName);  
 	TRY
 		Reset(inFile, 1);
-		Seek(inFile, 3+128);
-		Blockread(inFile, Palette[0], 1);
-		Seek(inFile, 15+128);
-		Blockread(inFile, Palette[1], 1);
-		Seek(inFile, 27+128);
-		Blockread(inFile, Palette[2], 1);
-		Seek(inFile, 39+128);
-		Blockread(inFile, Palette[3], 1);
+		Offset := 128 + 3; // First palette entry it's at byte 3 after the 128 byte AMSDOS header
+		for i:=0  TO 15 DO
+		BEGIN
+		 Seek(inFile, Offset);
+		 Blockread(inFile, Palette[i], 1);
+		 Offset := Offset  + 12;  // one palette value very 12 bytes
+		END;
 	EXCEPT
 		on E: Exception DO Error('PAL file not found or not valid, the .pal file for the image should be located at same folder than SCR file. If your OS is case sensitive, make sure the PAL file has the extension in lowercase.' + E.Message);
 	END; 
@@ -260,27 +260,23 @@ BEGIN
 	//Save header
 	BlockWrite(outFile, cpcHeader, 128);		
 
-	FOR i:= 0 to NumPaletteEntries-1 do Palette[i]:=GetCPCFirmwarePalette(Palette[i]);
-
-
+	FOR i:= 0 to 15 do Palette[i]:=GetCPCFirmwarePalette(Palette[i]);
 
 	IF lines=200 THEN //Full screen image, just save all 16.000 bytes plus palette
 	BEGIN
 		FOR I:=1 to 8 DO CopyBlock(inFile, outFile, 2048);
-		Seek(outFile, 16384 - NumPaletteEntries + 128);
-		BlockWrite(outFile, Palette, NumPaletteEntries);
+		Seek(outFile, 16384 - 16 + 128);
+		BlockWrite(outFile, Palette, 16);
 	END
 	ELSE
 	BEGIN             // Partial file, more tricky
 		BytesToRead := lines * 10;
-
 		ScansPer2kBuffer := TWO_KILOBYTES DIV BytesToRead;
 		// Save number of lines and palette
 		BlockWrite(outFile, ScansPer2kBuffer, 1);
-		BlockWrite(outFile, Palette, 4);
+		BlockWrite(outFile, Palette, 16);
 		BlockWrite(outFile, BytesToRead, 2);		
-
-		current2KBuffercount := 7;
+		current2KBuffercount := 19;
 	    FOR i:= 1 TO 8 DO
 		BEGIN
 		 	Blockread(inFile, TempBuffer, TWO_KILOBYTES, Readed);
@@ -582,7 +578,6 @@ END;
 VAR target, inputFilename, outputFilename: string;
 	lines : word;
 	transparency : byte;
-	NumPaletteEntries : Byte;
 	AuxString: string;
 	AuxVal : Longint;
 	Auto : Boolean;
@@ -602,14 +597,7 @@ BEGIN
 
     IF (uppercase(inputFilename) = 'HELP' ) THEN Help(target);	
 
-    NumPaletteEntries := 4;
-    AuxString := ParamStr(4);
-    IF (uppercase(AuxString)='MODE1') THEN
-    BEGIN
-    	AuxString := '200';
-    	NumPaletteEntries := 16;
-    END;
-
+	AuxString := ParamStr(4);
 	TRY
 		lines := StrToInt(AuxString);
     EXCEPT
@@ -651,7 +639,7 @@ BEGIN
     // Let's do it
     IF target = 'ZX' THEN ZX(inputFilename, outputFilename, lines) 
     ELSE IF target = 'NEXT' THEN NEXT(inputFilename, outputFilename, lines, transparency, auto) 
-    ELSE IF target = 'CPC' THEN CPC(inputFilename, outputFilename, lines, NumPaletteEntries) 
+    ELSE IF target = 'CPC' THEN CPC(inputFilename, outputFilename, lines) 
     ELSE IF target = 'MSX' THEN MSX(inputFilename, outputFilename, lines)
     ELSE IF target = 'C64' THEN C64(inputFilename, outputFilename, lines);
 

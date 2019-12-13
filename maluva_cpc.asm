@@ -1,34 +1,41 @@
 ; MALUVA (C) 2018 Uto
 ; LGPL License applies, see LICENSE file
-; TO BE COMPILED WITH SJASMPLUS
+; TO BE COMPILED WITH SJASMPLUS , use --exp export.asm parameter so export.asm is generated for the interrupt handler
 ; Thanks to Boriel for his 8 bits division code in ZX-Basic, DivByTen function is based on his code
-; Thanks to rafagr32, wilco, augustoruiz, fer and some others I'm surely forgetting to mention, who helped
+; Thanks to Rafagr32, Wilco, Augustoruiz, Fran Gallego, Fer and some others I'm surely forgetting to mention, who helped
 ; a lot with their valuable CPC knowledge
 
 			ORG $28BC
-            OUTPUT  MLV_CPC.BIN
+            OUTPUT MLV_CPC.BIN
 	
 
 ; ********************************************************************                        
 ;                           CONSTANTS 
 ; *******************************************************************
 
-			; Firmware calls
-			define CAS_IN_OPEN     	$bc77
-			define CAS_IN_DIRECT	$bc83
-			define CAS_IN_CLOSE    	$bc7a
-			define CAS_IN_CHAR 		$bc80
-			define SCR_SET_INK		$bc32
-			define SCR_SET_MODE		$bc0e			
-			define TXT_OUTPUT 		$bb5a
-			define KM_WAIT_CHAR 	$bb06
+						; Firmware calls
+						define CAS_IN_OPEN     	$bc77
+						define CAS_IN_DIRECT	$bc83
+						define CAS_IN_CLOSE    	$bc7a
+						define CAS_IN_CHAR 		$bc80
+						define SCR_SET_INK		$bc32
+						define SCR_SET_MODE		$bc0e			
+						define TXT_OUTPUT 		$bb5a
+						define KM_WAIT_CHAR 	$bb06
 
 
-			; Other contants
-			define BUFFER2K_ADDR			$0040
-			define TWO_KILOBYTES   			$0800
-			define VRAM_ADDR 				$C000 ; The video RAM address
-			define TIME						$B8B4 ; Auto-increment address
+						; Other contants
+						define BUFFER2K_ADDR			$0040
+						define TWO_KILOBYTES   			$0800
+						define VRAM_ADDR 				$C000 ; The video RAM address
+						define TIME						$B8B4 ; Auto-increment address
+						define CPC_DDB_BASE_ADDRESS 	$2880
+
+						; For the interrupt handler
+						define NEW_FAST_TICKER			 $BCE0 
+						define DEL_FAST_TICKER			 $BCE6
+						define FIRMWARE_MODE_NUMBER		 $B7C3
+						define DAAD_FAST_TICK_SPACE		 $A609  ;  This is a small area I've found, that is just after the frame flyback area
 
 
 ; ********************************************************************                        
@@ -49,14 +56,31 @@ Start
 						JP  	Z, XPart
 						CP 		5
 						JP  	Z, XBeep
+						CP 		6
+						JP 		Z, XCPCSplit
 						CP 		255
 						JP 		Z, RestoreXMessage
 						OR 		A
 						JP 		NZ, cleanExit
 
 
+LoadPicture				
+; Determine if we make a fade to black 
+						PUSH DE
+						LD 		HL, DoFadeToBlack
+						LD  	A, (HL)
+						OR 		A
+						JR  	Z, LoadPictureCont
+
+
+; Disable screen with CTRC
+						LD 		E, 0
+						CALL 	SETCRTCVisibleWith
+
 ; ---- Set the filename
-LoadPicture				LD 	A, D		; Restore first parameter
+
+LoadPictureCont			POP DE
+						LD 	A, D		; Restore first parameter
 						CALL 	DivByTen
 						ADD 	'0'
 						LD 	HL, Filename+2
@@ -75,24 +99,26 @@ LoadPicture				LD 	A, D		; Restore first parameter
 						CALL SilenceFW
 
 ; --- open file and reads CPC header, leaving file pointer just after
-                        LD 	B, 7			; Filename length
-                        LD 	HL, Filename		; Points to file name
-                        LD 	DE, BUFFER2K_ADDR	
+                        LD 		B, 7			; Filename length
+                        LD 		HL, Filename		; Points to file name
+                        LD 		DE, BUFFER2K_ADDR	
                         CALL 	CAS_IN_OPEN		; Open file
-                        JP 	NC, cleanExit
-                        JP 	Z, cleanExit
+                        JP 		NC, cleanExit
+                        JP 		Z, cleanExit
 
-						LD A, $FF
-						LD (LastXmessFile), A	; If a file was open, then the 2K buffer is going to be overwritten by the picture, so any Xmessage loaded there will be corruted, we set last XMessage file to 255 to avoid data to be used
+						LD 		A, $FF
+						LD 		(LastXmessFile), A	; If a file was open, then the 2K buffer is going to be overwritten by the picture, so any Xmessage loaded there will be corruted, we set last XMessage file to 255 to avoid data to be used
 
-                        DEC	HL
+                        DEC		HL
                         DEC 	HL			; after opening file, DE points to ASMDOS header, but 2 bytes below the header
-                        PUSH 	HL			; the header it's the current reading pointer when reading from buffer  with CAS_IN_CHAR
-                        POP 	IY			; We store header-2 address ay IY for later use
+                        PUSH 	HL			;  it's the current reading pointer when reading from buffer  with CAS_IN_CHAR
+                        POP 	IY			; We store header-2 address at IY for later use
 
 
+												
 ; Check if it is full picture to load it in a different way, a full screen picture is 16384  bytes long (and includes the palette in the last 4 bytes, over the "spare" zone in any CPC picture)
-                        LD 	A, (IY+26)			
+
+				        LD 	A, (IY+26)			
                         OR 	A
                         JR 	NZ, LoadPartialPicture 
                         LD 	A, (IY+27)
@@ -100,13 +126,12 @@ LoadPicture				LD 	A, D		; Restore first parameter
                         JP 	NZ, LoadPartialPicture
 
 ; Load Whole graphic and palette
-LoadFullPicture			LD	HL, VRAM_ADDR + 16384 - 8  ; Point to spare zone, plenty of zeros. Blank Palette
-						CALL 	SetPalette
-						LD 	HL, VRAM_ADDR		   ;  Read all picture data in screen
+LoadFullPicture			LD 		HL, VRAM_ADDR		   		;  Read all picture data in screen
 						CALL 	CAS_IN_DIRECT
-						LD 	HL, VRAM_ADDR + 16384 -4   ;  Palette fw colors have been loaded at the end
+						LD 		HL, VRAM_ADDR + 16384 - 16   ;  Palette fw colors have been loaded at the end
+						LD 		E, 16
 						CALL    SetPalette
-						JR 	FileLoaded		   ; Ok, let's go to exit procedure
+						JR 	FileLoaded		   			; Ok, let's go to exit procedure
 
 
 ; Ok, this codebelow needs an explanation: when CPC reads char by char using CAS_IN_CHAR, it actually reads 2K of data on first CAS_IN_CHAR, and then every 
@@ -130,22 +155,25 @@ LoadPartialPicture      CALL 	CAS_IN_CHAR		; Force loading first 2K buffer
                         LD 	IXH, A 			; we also keep it at IXH too for fast use
                         
 ; read the palette	
-						LD 	HL, BUFFER2K_ADDR + 1   ; Next 4 bytes are the palette
-						LD 	E, 4			; Set 4 colors palette
-						CALL 	SetPalette
+						LD 	HL, BUFFER2K_ADDR + 1   ; Next 16 bytes are the palette
+						LD 	DE, PaletteBuffer
+						LD  BC, 16
+						LDIR 						; Preserve the palette
+						
 
-						LD 	HL, BUFFER2K_ADDR + 5
+						LD 	HL, BUFFER2K_ADDR + 17
                         LD 	C, (HL)
                         INC	HL
                         LD 	B, (HL)			; BC Contains how many bytes there are per scanline
                         INC 	HL
+						
 
                                      
 ; read data - for CPC we read as much bytes as numLines / 8 * 80, that is numLines * 10, 8 times. 
 
 
 
-						LD 	IXL, 8			; 8 times
+						LD 	IXL, 8				; 8 times
 						LD 	DE, VRAM_ADDR		; Point to RAM addr
 			
 ReadFileLoop			PUSH 	BC
@@ -158,8 +186,8 @@ ReadFileLoop			PUSH 	BC
 ReadFileCont			PUSH 	HL
 						LD 		HL, $800		; Offset from one CPC line to the one inmediatly below
 						ADD 	HL, DE			; Make HL point to next line
-						LD	D, H			
-						LD 	E, L			; and move it to DE
+						LD		D, H			
+						LD 		E, L			; and move it to DE
 						POP 	HL			; restore HL
 						DEC 	IXL
 						JR 	NZ, ReadFileLoop
@@ -167,21 +195,58 @@ ReadFileCont			PUSH 	HL
 
 ; ---- Close file		
 FileLoaded				CALL 	CAS_IN_CLOSE
+
+; -- Set Palette		
+						LD HL, PaletteBuffer
+						LD 	E, 16			; Set 16 colors palette
+						CALL 	SetPalette
+
 	
 cleanExit				LD 	A, $CF			; restore original value (RST $8)
 						LD 	(TXT_OUTPUT),A
 
 cleanExit2				EI
+						LD 		E, 40
+						CALL 	SETCRTCVisibleWith
 						POP 	IX
 						POP 	BC
 						RET
 
+
+XCPCSplit				LD 		E, 0
+						CALL 	SETCRTCVisibleWith
+
+						LD 		A, D
+						AND 	$80
+						LD 		HL, DoFadeToBlack
+						LD 		(HL), A
+												
+
+XCPCSplitCont			LD 		A, D
+						AND 	$3
+						LD	 	HL, IntPatch2L+1				; Lower  Screen Mode
+						LD 		(HL),A
+						LD	 	HL, IntPatch3L+1				; Lower  Screen Mode
+						LD 		(HL),A
+						LD	 	HL, IntPatch4L+1				; Lower  Screen Mode
+						LD 		(HL),A
+
+						LD 		A, D
+						SRA 	A
+						SRA 	A
+						AND 	$3
+						LD	 	HL, IntPatch1U+1				; Upper  Screen Mode
+						LD 		(HL),A
+						JR 		cleanExit2
 
 XPart 					LD 		A, D
 						OR 		A
 						JR 		Z, cleanExit
 						LD 		A, 50
 						LD 		(XpartPart),A    ; If parameter != 0, then XPART equals 50 so files are in the range 50-81 instead of 0-31
+
+						LD 		E, 40
+						CALL 	SETCRTCVisibleWith
 						JR 		cleanExit2
 
 
@@ -408,25 +473,29 @@ RestoreXMessage			LD 		HL, $2892      ; DAAD Header pointer to SYSMESS table
 ; *******************************************************************
 
 
+
+
 ; --- silence CPC firmware messages
 SilenceFW				LD A, 201 				; RET
 						LD (TXT_OUTPUT),A
 						RET
 
 
-; ** Receives at HL a pointer to a 4 byte buffer with ink colors, E is the number of colors to set
-SetPalette				XOR A
-SetPaletteLoop 			LD 	B,(HL)
-						LD 	C, B
+; ** Receives at HL a pointer to a 16 byte buffer with ink colors
+SetPalette				XOR 	A
+SetPaletteLoop 			LD 		B,(HL)
+						LD 		C, B	; Both C and B should receive the color for SCR_SET_INK
 						PUSH 	AF
 						PUSH 	HL
+						PUSH 	DE
 						CALL 	SCR_SET_INK
+						POP 	DE
 						POP     HL
 						POP 	AF
 						INC 	HL
 						INC 	A
-						CP 	4
-						JR 	NZ, SetPaletteLoop
+						CP 		E
+						JR 		NZ, SetPaletteLoop
 						RET
 
 
@@ -435,17 +504,17 @@ SetPaletteLoop 			LD 	B,(HL)
 ; ** Forces another 2K buffer to be loaded from disk and sets back IXH and HL registers to control that buffer 
 
 Next2KBlock		LD 	HL, BUFFER2K_ADDR + TWO_KILOBYTES	; Set buffer pointer to end of buffer
-			LD 	(IY), L
-			LD 	(IY+1), H
-			XOR 	A
-			LD 	(IY+$15), A			; Change the header so length is ok, what will load everything avaliable (equals 65536)
-			LD 	(IY+$16), A
-			CALL 	CAS_IN_CHAR			; force loading another 2K
+				LD 	(IY), L
+				LD 	(IY+1), H
+				XOR 	A
+				LD 	(IY+$15), A			; Change the header so length is ok, what will load everything avaliable (equals 65536)
+				LD 	(IY+$16), A
+				CALL 	CAS_IN_CHAR			; force loading another 2K
 
-			LD 	A, (ScansPer2kBuffer)
-			LD 	IXH, A				; restore number of scans to read on next buffer
-			LD 	HL, BUFFER2K_ADDR			; restore source pointer to beginning of buffer
-			JP 	ReadFileCont
+				LD 	A, (ScansPer2kBuffer)
+				LD 	IXH, A				; restore number of scans to read on next buffer
+				LD 	HL, BUFFER2K_ADDR			; restore source pointer to beginning of buffer
+				JP 	ReadFileCont
 
 
 
@@ -464,6 +533,16 @@ DivByTenNoSub			DJNZ 	DivByTenLoop
 						RET				;A= remainder, D = quotient
 
 
+; Sets the with of the Screen in characters modifying the CTRCT
+SETCRTCVisibleWith 		LD BC, $BCFF
+						LD 	A, 1
+						OUT (C), A
+						INC B
+						LD A, E
+						OUT (C), A
+						RET
+
+
 
 Filename				DB 	"000.CPC"
 ScansPer2kBuffer		DB 	0
@@ -472,4 +551,94 @@ XMESSFilename			DB  "00.XMB"
 PreserveFirstSYSMES		DW 0
 PreserveBC				DW 0
 XpartPart				DB 0
+PaletteBuffer 			DS 16
 LastXmessFile			DB 255
+Time					DB 0			; Used by the MODE0/1 interrupt core
+DoFadeToBlack			DB 0
+EndOfMainCode
+
+
+; ------------------------------------------------------------------------------
+; --------------- The interrupt Handlers ---------------------------------------
+; ------------------------------------------------------------------------------
+
+						ORG EndOfMainCode
+            			OUTPUT "MLV_CPC_INT.BIN",t					; Save to a separated file
+
+; ------------ Interrupt handler for XCPCSPLIT, called on Frame Flyback
+InterruptHandler		PUSH BC
+						PUSH HL
+						PUSH DE
+						PUSH AF
+
+; ------------   Set Mode Upper Screen
+						DI
+IntPatch1U				LD 	A, 0
+						OR  $8C
+   						LD  B, $7F  
+   						OUT (C), A
+						EXX
+						LD 	C, A	; Avoid DAAD or firmware from setting video mode again, put mode in C', used by DAAD after execution of this code to restore mode
+						EXX
+
+						LD 	HL, FIRMWARE_MODE_NUMBER ; Set mode to lower part mode
+IntPatch2L				LD	(HL),2   ; Make sure FW is printing text in lower screen mode, always. Please notice text may be being printed at any time, so in case we change mode unadvertedly, part of the text will show wrong
+
+;PUES NO SE QUE LECHES PASA QUE SI CAMBIO ESE 2 POR UNA A salen mal los textos
+
+; --------------  Init fast tick event
+
+						LD 		HL, Time
+						LD 		(HL), 3 
+						LD 		DE, FastTickerHandler
+						LD 		HL, DAAD_FAST_TICK_SPACE
+						LD 		C, $FF
+						LD		B, 10000000b
+						CALL	NEW_FAST_TICKER		; Create tickblock
+
+						
+						POP 	AF
+						POP 	DE
+						POP		HL
+						POP 	BC
+						EI
+						RET
+
+
+FastTickerHandler		DI
+						PUSH 	BC
+						PUSH 	HL
+						PUSH 	DE
+						PUSH 	AF
+						LD 		HL, Time
+						DEC 	(HL)					
+						JR 		NZ,FastTickerExit
+
+						LD 		B, 1*64				; Delay to keep a few more lines in mode 0
+LoopWait				NOP
+						DJNZ 	LoopWait						
+
+
+
+; ------------   Set Mode Bottom
+						LD 	HL, FIRMWARE_MODE_NUMBER
+IntPatch4L				LD	(HL),2   ; Make sure FW is printing text in mode [dynamically modified], always
+IntPatch3L				LD  A, 2
+						OR $8C 
+   						LD  B, $7F  
+   						OUT (C), A
+						EXX
+						LD 	C, A	; Avoid DAAD or firmware from setting video mode again
+						EXX
+
+; ------------- Remove fast ticker
+						LD  	HL, DAAD_FAST_TICK_SPACE
+						CALL	DEL_FAST_TICKER     ; Delete ticker 
+FastTickerExit			POP 	AF
+						POP 	DE
+						POP		HL
+						POP 	BC
+						EI
+						RET
+
+
