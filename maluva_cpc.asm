@@ -72,13 +72,7 @@ LoadPicture
 						LD 		HL, DoFadeToBlack
 						LD  	A, (HL)
 						OR 		A
-						JR  	Z, LoadPictureCont
-
-
-; Disable screen with CTRC
-						LD 		E, 0
-						CALL 	SETCRTCVisibleWith
-
+						CALL 	NZ, HideScreen
 ; ---- Set the filename
 
 LoadPictureCont			POP DE
@@ -131,7 +125,6 @@ LoadPictureCont			POP DE
 LoadFullPicture			LD 		HL, VRAM_ADDR		   		;  Read all picture data in screen
 						CALL 	CAS_IN_DIRECT
 						LD 		HL, VRAM_ADDR + 16384 - 16   ;  Palette fw colors have been loaded at the end
-						LD 		E, 16
 						CALL    SetPalette
 						JR 	FileLoaded		   			; Ok, let's go to exit procedure
 
@@ -157,16 +150,16 @@ LoadPartialPicture      CALL 	CAS_IN_CHAR		; Force loading first 2K buffer
                         LD 	IXH, A 			; we also keep it at IXH too for fast use
                         
 ; read the palette	
-						LD 	HL, BUFFER2K_ADDR + 1   ; Next 16 bytes are the palette
-						LD 	DE, PaletteBuffer
-						LD  BC, 16
-						LDIR 						; Preserve the palette
+						LD 		HL, BUFFER2K_ADDR + 1   ; Next 16 bytes are the palette
+						LD 		DE, PaletteBuffer
+						LD 		BC, 16
+						LDIR
 						
 
-						LD 	HL, BUFFER2K_ADDR + 17
-                        LD 	C, (HL)
-                        INC	HL
-                        LD 	B, (HL)			; BC Contains how many bytes there are per scanline
+						LD 		HL, BUFFER2K_ADDR + 17
+                        LD 		C, (HL)
+                        INC		HL
+                        LD 		B, (HL)			; BC Contains how many bytes there are per scanline
                         INC 	HL
 						
 
@@ -194,31 +187,27 @@ ReadFileCont			PUSH 	HL
 						DEC 	IXL
 						JR 	NZ, ReadFileLoop
 
+; --- Set palette
+						LD 		HL, PaletteBuffer
+						CALL 	SetPalette
+
+
 
 ; ---- Close file		
 FileLoaded				CALL 	CAS_IN_CLOSE
 
-; -- Set Palette		
-						LD HL, PaletteBuffer
-						LD 	E, 16			; Set 16 colors palette
-						CALL 	SetPalette
 
 	
 cleanExit				LD 	A, $CF			; restore original value (RST $8)
 						LD 	(TXT_OUTPUT),A
 
 cleanExit2				EI
-						LD 		E, 40
-						CALL 	SETCRTCVisibleWith
 						POP 	IX
 						POP 	BC
 						RET
 
 
-XCPCSplit				LD 		E, 0
-						CALL 	SETCRTCVisibleWith
-
-						LD 		A, D
+XCPCSplit				LD 		A, D
 						AND 	$80
 						LD 		HL, DoFadeToBlack
 						LD 		(HL), A
@@ -247,8 +236,6 @@ XPart 					LD 		A, D
 						LD 		A, 50
 						LD 		(XpartPart),A    ; If parameter != 0, then XPART equals 50 so files are in the range 50-81 instead of 0-31
 
-						LD 		E, 40
-						CALL 	SETCRTCVisibleWith
 						JR 		cleanExit2
 
 
@@ -496,7 +483,7 @@ SetPaletteLoop 			LD 		B,(HL)
 						POP 	AF
 						INC 	HL
 						INC 	A
-						CP 		E
+						CP 		16
 						JR 		NZ, SetPaletteLoop
 						RET
 
@@ -535,15 +522,32 @@ DivByTenNoSub			DJNZ 	DivByTenLoop
 						RET				;A= remainder, D = quotient
 
 
-; Sets the with of the Screen in characters modifying the CTRCT
-SETCRTCVisibleWith 		LD BC, $BCFF
-						LD 	A, 1
-						OUT (C), A
-						INC B
-						LD A, E
-						OUT (C), A
-						RET
 
+HideScreen				LD HL, PaletteBuffer
+						LD (HL),0
+						LD DE, PaletteBuffer + 1
+						LD BC, 15
+						LDIR
+						LD HL, PaletteBuffer
+						CALL SetPalette
+
+						LD B, 8
+						LD HL, VRAM_ADDR
+HideLoop				LD (HL), 0
+						PUSH BC
+						PUSH HL
+						LD BC, 64*12 -1
+						POP  DE
+						PUSH DE
+						INC DE					
+						LDIR 
+						POP HL
+						LD BC, $800
+						ADD HL, BC
+						POP BC
+						DJNZ HideLoop
+
+						RET
 
 
 Filename				DB 	"000.CPC"
