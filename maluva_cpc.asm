@@ -5,8 +5,8 @@
 ; Thanks to Rafagr32, Wilco, Augustoruiz, Fran Gallego, Fer and some others I'm surely forgetting to mention, who helped
 ; a lot with their valuable CPC knowledge
 
-			ORG $28BC
-            OUTPUT MLV_CPC.BIN
+						ORG $28BC
+            			OUTPUT MLV_CPC.BIN
 	
 
 ; ********************************************************************                        
@@ -37,7 +37,8 @@
 						define FIRMWARE_MODE_NUMBER		 $B7C3
 						define DAAD_FAST_TICK_SPACE		 $A609  ;  This is a small area I've found, that is just after the frame flyback area
 						define UPPER_MODE				 0 ; default upper mode in split screen 
-						define LOWER_MODE				 2 ; default lower mode in split screen 
+						define LOWER_MODE				 1 ; default lower mode in split screen 
+						define FADE_TO_BLACK			 0 ; default fade or not when in split screen
 
 
 ; ********************************************************************                        
@@ -67,16 +68,8 @@ Start
 
 
 LoadPicture				
-; Determine if we make a fade to black 
-						PUSH DE
-						LD 		HL, DoFadeToBlack
-						LD  	A, (HL)
-						OR 		A
-						CALL 	NZ, HideScreen
-; ---- Set the filename
 
-LoadPictureCont			POP DE
-						LD 	A, D		; Restore first parameter
+LoadPictureCont			LD 	A, D		; Restore first parameter
 						CALL 	DivByTen
 						ADD 	'0'
 						LD 	HL, Filename+2
@@ -94,13 +87,23 @@ LoadPictureCont			POP DE
 
 						CALL SilenceFW
 
+; Determine if we make a fade to black 
+DoFadeToBlack			LD  	A, FADE_TO_BLACK
+						OR 		A
+						CALL 	NZ, HideScreen
+						CALL 	WaitForVsync
+
+
 ; --- open file and reads CPC header, leaving file pointer just after
                         LD 		B, 7			; Filename length
                         LD 		HL, Filename		; Points to file name
                         LD 		DE, BUFFER2K_ADDR	
                         CALL 	CAS_IN_OPEN		; Open file
-                        JP 		NC, cleanExit
-                        JP 		Z, cleanExit
+                        JP 		NC, cleanExitRestorePal
+                        JP 		Z, cleanExitRestorePal
+
+; ---- Set the filename
+
 
 						LD 		A, $FF
 						LD 		(LastXmessFile), A	; If a file was open, then the 2K buffer is going to be overwritten by the picture, so any Xmessage loaded there will be corruted, we set last XMessage file to 255 to avoid data to be used
@@ -125,6 +128,7 @@ LoadPictureCont			POP DE
 LoadFullPicture			LD 		HL, VRAM_ADDR		   		;  Read all picture data in screen
 						CALL 	CAS_IN_DIRECT
 						LD 		HL, VRAM_ADDR + 16384 - 16   ;  Palette fw colors have been loaded at the end
+						CALL	BackupPalette
 						CALL    SetPalette
 						JR 	FileLoaded		   			; Ok, let's go to exit procedure
 
@@ -189,12 +193,17 @@ ReadFileCont			PUSH 	HL
 
 ; --- Set palette
 						LD 		HL, PaletteBuffer
+						CALL 	BackupPalette
 						CALL 	SetPalette
 
 
 
 ; ---- Close file		
 FileLoaded				CALL 	CAS_IN_CLOSE
+						CALL    WaitForVsync
+						CALL    WaitForVsync	; Waiting for two Vsync(1/25 second) to make sure everything restabilishes properly
+
+
 
 
 	
@@ -209,7 +218,7 @@ cleanExit2				EI
 
 XCPCSplit				LD 		A, D
 						AND 	$80
-						LD 		HL, DoFadeToBlack
+						LD 		HL, DoFadeToBlack + 1
 						LD 		(HL), A
 												
 
@@ -220,6 +229,8 @@ XCPCSplitCont			LD 		A, D
 						LD	 	HL, IntPatch3L+1				; Lower  Screen Mode
 						LD 		(HL),A
 						LD	 	HL, IntPatch4L+1				; Lower  Screen Mode
+						LD 		(HL),A
+						LD	 	HL, IntPatch5L+1				; Lower  Screen Mode
 						LD 		(HL),A
 
 						LD 		A, D
@@ -487,7 +498,24 @@ SetPaletteLoop 			LD 		B,(HL)
 						JR 		NZ, SetPaletteLoop
 						RET
 
+; COpies the 16  bits pointed by HL in LastPaletteBuffer. No registers modified
+BackupPalette			PUSH 	HL
+						PUSH 	DE
+						PUSH 	BC
+						LD 	 	DE, LastPaletteBuffer
+						LD 	 	BC, 16
+						LDIR
+						POP 	BC
+						POP 	DE
+						POP 	HL
+						RET						
 
+
+; *** REstores last palette and exits
+
+cleanExitRestorePal     LD HL, LastPaletteBuffer
+						CALL SetPalette
+						JP cleanExit
 
 
 ; ** Forces another 2K buffer to be loaded from disk and sets back IXH and HL registers to control that buffer 
@@ -522,32 +550,38 @@ DivByTenNoSub			DJNZ 	DivByTenLoop
 						RET				;A= remainder, D = quotient
 
 
-
-HideScreen				LD HL, PaletteBuffer
-						LD (HL),0
-						LD DE, PaletteBuffer + 1
-						LD BC, 15
-						LDIR
-						LD HL, PaletteBuffer
-						CALL SetPalette
-
-						LD B, 8
-						LD HL, VRAM_ADDR
-HideLoop				LD (HL), 0
-						PUSH BC
-						PUSH HL
-						LD BC, 64*12 -1
-						POP  DE
-						PUSH DE
-						INC DE					
-						LDIR 
-						POP HL
-						LD BC, $800
-						ADD HL, BC
-						POP BC
-						DJNZ HideLoop
-
+WaitForVsync				LD 	B, $F5   ; PPI port B input
+VsyncLoop				IN	A,(C)    ; read PPI port B input
+						RRA 
+						JR  NC, VsyncLoop
 						RET
+
+
+HideScreen				LD 	HL, PaletteBuffer
+						LD 	(HL),0
+						LD 	DE, PaletteBuffer + 1
+						LD 	BC, 15
+						LDIR
+						LD 	HL, PaletteBuffer
+						CALL SetPalette
+						RET
+
+;						LD B, 8
+;						LD HL, VRAM_ADDR
+;HideLoop				LD (HL), 0
+;						PUSH BC
+;						PUSH HL
+;						LD BC, 64*12 -1
+;						POP  DE
+;						PUSH DE
+;						INC DE					
+;						LDIR 
+;						POP HL
+;						LD BC, $800
+;						ADD HL, BC
+;						POP BC
+;						DJNZ HideLoop
+;						RET
 
 
 Filename				DB 	"000.CPC"
@@ -558,9 +592,10 @@ PreserveFirstSYSMES		DW 0
 PreserveBC				DW 0
 XpartPart				DB 0
 PaletteBuffer 			DS 16
+LastPaletteBuffer 		DB 0,26,24,11  ; Last PaletteBuffer is 16 bytes long, but we want the first 4 bytes to be a paletta with some contrast, in case the firs picture loading fails. Thus, instead of DS 16, we have 4xDB and DS 12
+						DS 12
 LastXmessFile			DB 255
 Time					DB 0			; Used by the MODE0/1 interrupt core
-DoFadeToBlack			DB 0
 EndOfMainCode
 
 
@@ -583,19 +618,19 @@ IntPatch1U				LD 	A, UPPER_MODE
 						OR  $8C
    						LD  B, $7F  
    						OUT (C), A
+						LD 	HL, FIRMWARE_MODE_NUMBER ; Set mode to lower part mode
+IntPatch2L				LD	(HL),LOWER_MODE   ; Make sure FW is printing text in lower screen mode, always. Please notice text may be being printed at any time, so in case we change mode unadvertedly, part of the text will show wrong
 						EXX
 						LD 	C, A	; Avoid DAAD or firmware from setting video mode again, put mode in C', used by DAAD after execution of this code to restore mode
 						EXX
 
-						LD 	HL, FIRMWARE_MODE_NUMBER ; Set mode to lower part mode
-IntPatch2L				LD	(HL),LOWER_MODE   ; Make sure FW is printing text in lower screen mode, always. Please notice text may be being printed at any time, so in case we change mode unadvertedly, part of the text will show wrong
 
 ;PUES NO SE QUE LECHES PASA QUE SI CAMBIO ESE 2 POR UNA A salen mal los textos
 
 ; --------------  Init fast tick event
 
 						LD 		HL, Time
-						LD 		(HL), 3 
+						LD 		(HL), 5
 						LD 		DE, FastTickerHandler
 						LD 		HL, DAAD_FAST_TICK_SPACE
 						LD 		C, $FF
@@ -616,8 +651,12 @@ FastTickerHandler		DI
 						PUSH 	HL
 						PUSH 	DE
 						PUSH 	AF
+						LD 		HL, FIRMWARE_MODE_NUMBER
+IntPatch5L				LD		(HL), LOWER_MODE
 						LD 		HL, Time
 						DEC 	(HL)					
+						LD 		A, (HL)
+						CP 		2					; Do change only in tick 3  (5-3  =2)
 						JR 		NZ,FastTickerExit
 
 						LD 		B, 1*64				; Delay to keep a few more lines in mode 0
