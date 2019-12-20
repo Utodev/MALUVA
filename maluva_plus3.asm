@@ -138,7 +138,7 @@ LoadImg
 
 		
 					SUB 	64
-					JR 		C, drawPartialThird  ; if thre is no carry, there is at least one whole third of screen, then we continue, otherwise we jump to paint the partial third
+					JR 		C, drawPartialThird0  ; if thre is no carry, there is at least one whole third of screen, then we continue, otherwise we jump to paint the partial third
 					LD 		BC, 2048 			 ; length of a third
 					LD 		H, B
 					LD 		L, C
@@ -154,6 +154,7 @@ drawWholeThirds		PUSH 	HL
 					LD 		HL, $C001			; origin
 					LD 		DE, VRAM_ADDR		; destination
 					LDIR 
+					JR 		drawPartialThird
 
 
                         
@@ -163,6 +164,9 @@ drawWholeThirds		PUSH 	HL
 ;     To determine how many rows are left we divide lines left by 8, but then to calculate how many bytes we have to read to load first pixel line for those rows we multiply by 32,
 ;     so in the end we multiply by 4. Once we know how much to read per each iteration we have to do 8 iterations, one per each line in a character. So we first prepare <lines left>*4 in
 ;     BC register,and then just read DE bytes 8 times, increasin HL (pointing to VRAM) by 256 each time to point to the next line inside the row
+
+drawPartialThird0		LD 		HL, $C001
+						LD 		DE, VRAM_ADDR  ; If the image does not cover a whole third at all, HL and DE are not initialized so they are initialized here
 
 
 drawPartialThird        ADD	A, 64		; restore the remaining number of lines (last SUB went negative)                
