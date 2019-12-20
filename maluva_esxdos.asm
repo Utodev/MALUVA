@@ -133,28 +133,29 @@ LoadImg
 
 			
 					SUB 	64
-					JR 	C, drawPartialThird  ; if thre is no carry, there is at least one whole third of screen
-					LD 	BC, 2048
-					LD 	H, B
-					LD 	L, C
+					JR 		C, drawPartialThird0  ; if thre is no carry, there is at least one whole third of screen
+					LD 		BC, 2048
+					LD 		H, B
+					LD 		L, C
 					SUB 	64
-					JR 	C, drawWholeThirds   ;if there is still no carry, there are at least two thirds of screen
+					JR 		C, drawWholeThirds   ;if there is still no carry, there are at least two thirds of screen
 					ADD 	HL, BC
 nextThird	        SUB 	64
-					JR 	C, drawWholeThirds ; if there is still no carry, it's a full screen (3 thirds)
-					ADD	HL, BC	           ; read one, two or the three whole thirds
-drawWholeThirds		LD 	B, H
-					LD 	C, L		
-					LD 	IX, VRAM_ADDR
+					JR 		C, drawWholeThirds ; if there is still no carry, it's a full screen (3 thirds)
+					ADD		HL, BC	           ; read one, two or the three whole thirds
+drawWholeThirds		LD 		B, H
+					LD 		C, L		
+					LD 		IX, VRAM_ADDR
 					PUSH    AF
-					LD 	A, D 		; file handle
+					LD 		A, D 		; file handle
 					PUSH 	DE
 					RST     $08
 					DB      F_READ
 					POP 	DE
 					POP 	AF
-					LD 	IX, VRAM_ADDR
+					LD 		IX, VRAM_ADDR
 					ADD 	IX, BC		; Hl points to next position in VRAM to paint at
+					JR 		drawPartialThird
                         
 ; --- This draws the last third, that is an uncomplete one, to do so, the file will come prepared so instead of an standar third with 8 character rows, it's a rare third with less rows.
 ;     For easier undesrtanding we will call 'row" each character row left, and 'line' each pixel line left, so each row is built by 8 lines.
@@ -162,6 +163,9 @@ drawWholeThirds		LD 	B, H
 ;     To determine how many rows are left we divide lines left by 8, but then to calculate how many bytes we have to read to load first pixel line for those rows we multiply by 32,
 ;     so in the end we multiply by 4. Once we know how much to read per each iteration we have to do 8 iterations, one per each line in a character. So we first prepare <lines left>*4 in
 ;     BC register,and then just read BC bytes 8 times, increasin IX (pointing to VRAM) by 256 each time to point to the next line inside the row
+
+drawPartialThird0		LD 		IX, VRAM_ADDR  ; If the image does not cover a whole third at all, IX is not initialized so it is initialized here
+
 
 
 drawPartialThird    ADD		A, 64		; restore the remaining number of lines (last SUB went negative)                
