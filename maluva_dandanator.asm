@@ -1,6 +1,10 @@
 ; MALUVA (C) 2018 Uto, 
-; MIT License applies, see LICENSE file
+; LGPL License applies, see LICENSE file
 ; TO BE COMPILED WITH SJASMPLUS
+
+; Important note: this is a preliminary work on Maluva for Dandanator for ZX Spectrum. It has worked ofr XPICTURE,
+; but other Maluva functions has not been created, and the code is partially abandoned, or actually waiting for
+; someone to make use of it
 
 
 ; Notes: 
@@ -165,9 +169,9 @@ SaveGame			CALL 	askWhichSavegameSlot
 ; *******************************************************************
 
 
-; —------------------------------------------------------------------------------------—-------------
+; ï¿½------------------------------------------------------------------------------------ï¿½-------------
 ; This routine ask the user to type a slot number 1-8, and if successful returns slot minus one (0-7)  
-; —--------------------------------------------------------------------------------------------------
+; ï¿½--------------------------------------------------------------------------------------------------
 askWhichSavegameSlot		EI
 				CALL 	DAAD_ASK_FILENAME	; Ask for savegame slot number
 				DI

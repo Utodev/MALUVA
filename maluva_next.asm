@@ -1,5 +1,5 @@
 ; MALUVA (C) 2018 Uto
-; MIT License applies, see LICENSE file
+; LGPL License applies, see LICENSE file
 ; TO BE COMPILED WITH SJASMPLUS
 ; Thanks to Boriel for his 8 bits division code in ZX-Basic, DivByTen function is based on his code
 ; Thanks to Ped7g, Alcoholics Anonymous and  SevenFFF for their help in the Spectrum Next forum
@@ -91,6 +91,8 @@ Init				LD 	D, A		; Preserve first parameter
 					JP 	Z, LoadGame
 					CP  3
 					JP 	Z, XMessage
+					CP  4
+					JP  Z, XPart
 					JP 	cleanExit
 ; ---- Set the filename
 LoadImg
@@ -281,7 +283,13 @@ CloseFile			LD 	A, $FF			; That $FF will be modifed by code above
 diskFailure			LD 	L, 57			; E/S error
 DAADSysmesCall		CALL    DAAD_SYSMESS_ES
 					JR 	cleanExit
-			
+
+XPart				LD 		A, D
+					ADD		'0'
+					LD      (XMESSFilename), A
+					JR 		cleanExit
+
+
 XMessage			LD 		L, D ;  LSB at L
 					POP 	IX
 					POP 	BC

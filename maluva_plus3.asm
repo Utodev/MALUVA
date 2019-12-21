@@ -1,5 +1,5 @@
 ; MALUVA (C) 2018 Uto
-; MIT License applies, see LICENSE file
+; LGPL License applies, see LICENSE file
 ; TO BE COMPILED WITH SJASMPLUS
 ; Thanks to Boriel for his 8 bits division code in ZX-Basic, DivByTen function is based on his code.
 ; Also thanks to Wilco2009, whose help with the +3DOS routines has been absolutely needed!
@@ -80,6 +80,9 @@ Init					LD 	D, A		; Preserve first parameter
 						JP 	Z, LoadGame
 						CP  3
 						JP 	Z, XMessage
+						CP  4
+						JP  Z, XPart
+
 
 						JP 	cleanExit
 ; ---- Set the filename
@@ -135,7 +138,7 @@ LoadImg
 
 		
 					SUB 	64
-					JR 		C, drawPartialThird  ; if thre is no carry, there is at least one whole third of screen, then we continue, otherwise we jump to paint the partial third
+					JR 		C, drawPartialThird0  ; if thre is no carry, there is at least one whole third of screen, then we continue, otherwise we jump to paint the partial third
 					LD 		BC, 2048 			 ; length of a third
 					LD 		H, B
 					LD 		L, C
@@ -145,11 +148,13 @@ LoadImg
 nextThird	        SUB 	64
 					JR 		C, drawWholeThirds ; if there is still no carry, it's a full screen (3 thirds)
 					ADD		HL, BC	           ; read one, two or the three whole thirds
+					SUB 	64					
 drawWholeThirds		PUSH 	HL
 					POP 	BC 					; Number of bytes to copy at BC
 					LD 		HL, $C001			; origin
 					LD 		DE, VRAM_ADDR		; destination
 					LDIR 
+					JR 		drawPartialThird
 
 
                         
@@ -159,6 +164,9 @@ drawWholeThirds		PUSH 	HL
 ;     To determine how many rows are left we divide lines left by 8, but then to calculate how many bytes we have to read to load first pixel line for those rows we multiply by 32,
 ;     so in the end we multiply by 4. Once we know how much to read per each iteration we have to do 8 iterations, one per each line in a character. So we first prepare <lines left>*4 in
 ;     BC register,and then just read DE bytes 8 times, increasin HL (pointing to VRAM) by 256 each time to point to the next line inside the row
+
+drawPartialThird0		LD 		HL, $C001
+						LD 		DE, VRAM_ADDR  ; If the image does not cover a whole third at all, HL and DE are not initialized so they are initialized here
 
 
 drawPartialThird        ADD	A, 64		; restore the remaining number of lines (last SUB went negative)                
@@ -270,7 +278,13 @@ diskFailure				CALL pageOutDOS
 DAADSysmesCall			CALL    DAAD_SYSMESS_ES
 						JR	 	cleanExit
 
-			
+
+XPart					LD 		A, D
+						ADD		'0'
+						LD      (XMESSFilename), A
+						JR 		cleanExit
+
+
 XMessage				LD 		L, D ;  LSB at L
 						POP 	IX
 						POP 	BC
@@ -279,7 +293,16 @@ XMessage				LD 		L, D ;  LSB at L
 						PUSH    IX
 						LD 		A, (BC)
 						LD 		H, A ; MSB AT H, so Message address at HL
-						LD	 	(XMessBuffer), HL   ; Preserve file offset, using the buffer as temporary address
+
+						LD 		IX, (LastOffset)  ; Let's check if it's same message than last time
+						CP 		IXH
+						JR 		NZ, NotSameMessage
+						LD 		A, L
+						CP 		IXL
+						JR 		Z, XmessPrintMessage  ;If same offset, just print again
+
+
+NotSameMessage			LD	 	(LastOffset), HL   ; Preserve file offset, using the buffer as temporary address
 
 						CALL pageinDOS
 						CALL P3DOS_INITIALISE
@@ -294,7 +317,7 @@ XMessage				LD 		L, D ;  LSB at L
 
 ; Seek file						
 						LD 		B,0
-						LD      HL, (XMessBuffer)   ; Restore offset
+						LD      HL, (LastOffset)   ; Restore offset
 						LD 		E, B                 ; E-HL = offset
 					    CALL	P3DOS_SET_POSITION
 
@@ -379,6 +402,7 @@ PatchForEnglish			LD HL, DAAD_READ_FILENAME_EN
 
 Filename				DB 	"UTO.ZXS",$FF
 XMESSFilename			DB  "0.XMB",$FF
+LastOffset				DW 	$FFFF
 XMessBuffer				DS 512
 
 

@@ -1,6 +1,6 @@
 
 ; MALUVA for MSX (C) 2018 FX, Armando Perez Abad & Uto
-; MIT License applies, see LICENSE file
+; LGPL License applies, see LICENSE file
 ; TO BE COMPILED WITH SJASMPLUS
 ; Thanks to Boriel for his 8 bits division code in ZX-Basic, DivByTen function is based on his code
 
@@ -35,7 +35,9 @@
                         define DAAD_SYSMESS             $B402
                         define DAAD_FILENAME_ADDR_ES    $C011
                         define DAAD_FILENAME_ADDR_EN    $BFB1
-                        
+
+            			define JIFFY					$FC9E ; The timer variable
+
 
 Start                   
                         DI
@@ -55,6 +57,12 @@ Start
                         JP      Z, loadGame
                         CP      3
                         JP      Z, xMessage
+						CP      4
+						JP      Z, XPart
+						CP 		5
+						JP 		Z, XBeep
+						CP 		255
+						JP 		Z, RestoreXMessage
                         JP      cleanExit
 
 ; ---- Set the filename
@@ -72,6 +80,11 @@ loadImg                 LD      A, D
                         LD      A, '0'
                         ADD     D
                         LD      (HL),A
+
+
+   						LD A, $FF               ; If a file was open, then the workbuffer  is going to be overwritten by the picture, so any Xmessage loaded there will be corruted, we set last XMessage file to 255 to avoid data to be used
+						LD (LastOffset), A	
+						LD (LastOffset+1), A	
 
 
 ; --- Open file        
@@ -306,6 +319,85 @@ createFile              CALL    prepareFCB
                         LD      DE, FCB
                         CALL    BDOS                  
                         RET
+
+; XPart function
+XPart				    LD 		A, D
+					    ADD		'0'
+					    LD      (XMESSFilename), A
+					    JP 		cleanExit
+
+
+; XBeep , beep replacement
+
+XBeep				    LD 		L, D    ; First parameter (duration) to L					
+						POP 	IX
+						POP 	BC
+						INC 	BC
+						LD 		A, (BC) ; Third parameter (tone) to A
+                        LD      E, A
+						XOR 	A
+						LD 		D, A  ;  At this point, DE=tone, L=duration
+						PUSH 	BC
+						PUSH 	IX
+
+						LD   IX,sfxFreqPSG - 48	; DE=get frequency from tone table
+						ADD  IX,DE
+						LD   E,(IX+0)
+						LD   D,(IX+1)
+
+						LD   C,$A1
+
+						XOR  A					; REG#0 ChannelA Tone LowByte
+						OUT  ($A0),A
+						OUT  (C),E
+						INC  A					; REG#1 ChannelA Tone HighByte
+						OUT  ($A0),A
+						OUT  (C),D
+
+						LD   A,8				; REG#8 ChannelA Volume to 8
+						OUT  ($A0),A
+						OUT  (C),A
+
+						LD   A,7				; REG#7 Mixer enable ChannelA
+						OUT  ($A0),A
+						LD   A,00111110b
+						OUT  ($A1),A
+
+BeepSilence				EX   DE,HL
+						SRL  E
+						CALL NZ,SilenceWait
+					
+						LD   A,7				; REG#7 Mixer disable ChannelA
+						OUT  ($A0),A
+						LD   A,00111111b
+						OUT  ($A1),A
+
+						JP   cleanExit
+
+SilenceWait									; Wait for E = 1/50 seconds
+                        EI
+						LD  HL,JIFFY			; Cogemos la address donde se cuenta el tiempo en 1/50sec
+loop0					LD  A,(HL)
+loop1					CP  (HL)
+						JR  Z,loop1
+						DEC E
+						JR  NZ,loop0
+                        DI
+						RET
+
+
+
+; Frequencies table
+sfxFreqPSG				DW	0xD65, 0xC9D, 0xBEB, 0xB42, 0xA9A, 0xA04, 0x971, 0x8E8, 0x86B, 0x7E2, 0x77F, 0x719	// Octave 1 (48-70) 
+						DW	0x6B3, 0x64E, 0x5F5, 0x5A1, 0x54D, 0x502, 0x4B9, 0x474, 0x434, 0x3F9, 0x3C0, 0x38C	// Octave 2 (72-98)
+						DW	0x359, 0x327, 0x2F6, 0x2D1, 0x2A7, 0x281, 0x25C, 0x23A, 0x21A, 0x1FD, 0x1E0, 0x1C6, // Octave 3 (96-118) 
+						DW	0x1AD, 0x194, 0x17D, 0x168, 0x153, 0x141, 0x12E, 0x11D, 0x10D, 0x0FE, 0x0F0, 0x0E3  // Octave 4 (120-142)
+						DW	0x0D6, 0x0CA, 0x0BF, 0x0B4, 0x0AA, 0x0A0, 0x097, 0x08F, 0x087, 0x07F, 0x078, 0x072	// Octave 5 (144-166) 
+						DW	0x06B, 0x065, 0x05F, 0x05A, 0x055, 0x050, 0x04C, 0x047, 0x043, 0x040, 0x03C, 0x039	// Octave 6 (168-190)
+						DW	0x036, 0x033, 0x030, 0x02D, 0x02A, 0x028, 0x026, 0x024, 0x022, 0x020, 0x01E, 0x01C	// Octave 7 (192-214) 
+						DW	0x01B, 0x019, 0x018, 0x017, 0x015, 0x014, 0x013, 0x012, 0x011, 0x010, 0x00F, 0x00E  // Octave 8 (216-238)
+
+
 ; Xmessage printing
 xMessage			    LD 		L, D ;  LSB at L
 				    	POP 	IX
@@ -315,7 +407,17 @@ xMessage			    LD 		L, D ;  LSB at L
 				    	PUSH 	IX
 				    	LD 		A, (BC)
 				    	LD 		H, A ; MSB AT H, so Message address at HL
-                        LD      (WorkBuffer), HL
+
+
+						LD 		IX, (LastOffset)  ; Let's check if it's same message than last time
+						CP 		IXH
+						JR 		NZ, NotSameMessage
+						LD 		A, L
+						CP 		IXL
+						JR 		Z, XmessPrintMessage  ;If same offset, just print again
+
+
+NotSameMessage          LD      (LastOffset), HL
                         
 ; ------- Open file      
 
@@ -329,7 +431,7 @@ xMessage			    LD 		L, D ;  LSB at L
 
 ; ------- Seek File              
 
-                        LD      HL, (WorkBuffer)
+                        LD      HL, (LastOffset)
                         LD      (FCB+33), HL                     ; At FCB+33 there is a 32 bit value meaning the offest of the file
                         XOR     A
                         LD      (FCB+35),A
@@ -342,14 +444,56 @@ xMessage			    LD 		L, D ;  LSB at L
                         CALL    BDOS
 
 ; ------- Print message 
-                        LD      HL, WorkBuffer
-                        CALL    $BD9D
+                        ; OK, this below needs to be explained: I didn't find a way to call the DAAD function to print text and make it work with an xmessage already loaded in RAM. Everything
+						; worked but the \n or  #n carriage return. The function was at address $1629 in the spanish interpreter. Then I decided to do the following: try to make the text
+						; being printed by the MES condact, and to do that I as going to execute a MES condact. How do I do that?
+						; 1) I modified first entry in the messages offsets table, preserving the value there before, to the address where the xmessage is loaded in RAM
+						; 2) I was udpating BC and making sure it is returned modified to the stack. DAAD uses BC as it's internal "PC" register, so changing BC actually makes DAAD run 
+						;    opcodes somewhere else. I pointed it to a zone in RAM (see below) where I already had sorted two condacts: MES 0, and EXTERN 0 255. MES 0 prints the text 
+						;    using MES condact and then EXTERN 0 255...
+						; 3) is another function in Maluva I'm using to restore the Message 0 pointer, and restoring BC, so the execution continues just after the XMES/XMESSAGE call
 
 
-; ------- Close File
+XmessPrintMessage   	LD 		HL, $0112      ; DAAD Header pointer to SYSMESS table
+						LD 		E, (HL)
+						INC 	HL
+						LD 		D, (HL)
+						EX      HL, DE		   ; HL points to SYSMESS pointers table
+						LD 		E, (HL)
+						INC		HL
+						LD 		D, (HL)  		; Now DE has the value of first message pointer, and HL points to where that pointer is
+
+						LD      (PreserveFirstSYSMES),DE
+						LD		DE, WorkBuffer
+						LD 		(HL), D
+						DEC		HL
+						LD 		(HL), E			; Store the offset at first message pointer 
+
+						POP 	IX
+						POP 	BC
+						LD 		(PreserveBC), BC
+						LD 		BC, FakeCondacts - 1		; Make DAAD "PC" point to our fake condacts
+						PUSH 	BC
+						PUSH 	IX
+
                         JP      cleanAndClose
 
+						; So this is an unreachable (by the Z80 CPU) piece of codem which is actually DAAD code 
+FakeCondacts			DB 		$36, 0,     $3D, 0, $FF   ; SYSMESS 0 EXTERN 0 255
 
+                        
+RestoreXMessage			LD 		HL, $0112      ; DAAD Header pointer to SYSMESS table
+						LD 		E, (HL)
+						INC 	HL
+						LD 		D, (HL)
+						LD 		HL, PreserveFirstSYSMES
+						LDI
+						LDI
+						POP 	IX
+						POP 	BC
+						LD 		BC, (PreserveBC)
+						EI
+						RET
           
 
 ; ---------------------------------------------------------------------------
@@ -375,6 +519,9 @@ DivByTenNoSub
 ImageFilename           DB      "000     MS2"
 SavegameFilename        DB      "UTO     SAV"        
 XMESSFilename			DB      "0       XMB"
+PreserveFirstSYSMES		DW      0
+PreserveBC				DW      0
+LastOffset              DW      $FFFF
 WorkBuffer              DS      $200                                                ; WE only need $100 for the pictures buffer but we are using $200 for XMEssages, so we 
 
 
