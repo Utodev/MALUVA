@@ -42,9 +42,9 @@
 					BC      	=    253
 					B       	=    254
 					C       	=    253
-					HL      	=    251
-					H       	=    252
-					L       	=    251
+					HL     		=    6;251
+					H      		=    7;252
+					L      		=    6;251
 ;					Also, DAAD "PRINT" routine expecst data here
 					MSGDATAH   	=     66
 					MSGDATAL   	=     65
@@ -177,89 +177,6 @@ XPart 				TXA
 					STA XPartPart
 					JMP CleanExit
 
-; ---------------------------- XMessage
-
-; We get here wih the LSB of the offset at X and the MSB at the next place pointed by 'BC'
-XMessage			STX L
-					INC C
-					BNE +
-					INC B   	; Increase BC, which DAAD uses as PC counter
-+					LDY #0
-					LDA (BC), Y   ; Load byte pointed by BC (as X=0)
-					STA H					
-					LSR	
-					LSR	
-					LSR	; Now A has file number (based on first file is 00)
-					CLC	
-					ADC XPartPart ; Now A has fiel number + 50 if part is not first part
-					LDY #10					
-					JSR Divide
-					CLC							; Clear carry
-					ADC 	#'0'				; inc to ascii equivalence
-					STA XmessageFilename + 1
-					TXA
-					ADC 	#'0'				; inc to ascii equivalence
-					STA XmessageFilename + 0  ; File name string is now ready
-
-; -------           Open Messages file
-        			LDX #<XmessageFilename
-        			LDY #>XmessageFilename
-					LDA #2
-					JSR OpenFile
-
-; --------  Simulate fseek					
-					LDA H	
-					AND #$07
-					STA H					; Store with real offset within file
-					ORA L
-					BEQ ReadMsg             ; Ofsset is zero, no fseek		
-
-					LDA H          			; HL now has the real offset within the file, but with MSB (H) increased by 1, which will make the DEC H down here end loop on first decrement
-					INC H					; otherwise, first decrement would turn H int $FF, not zero 
--					JSR KERNAL_CHRIN		
-					DEC L
-					BNE -
-					DEC H
-					BNE -
-
-; --------- Read message
-ReadMsg				LDA <#XmessageBuffer   ; LSB of XMessageBuffer
-					STA L
-					LDA >#XmessageBuffer   ; MSB of XMessageBuffer
-					STA H
-					LDY #0
-
-ReadMsgLoop			JSR KERNAL_CHRIN		; Read number of attribute lines
-					TAX
-					EOR #$FF
-					CMP #10					; End of message mark
-					BEQ TextLoaded
-					TXA
-					STA (HL), Y
-					INC Y
-					BNE ReadMsgLoop
-					INC H
-					BNE ReadMsgLoop        ; BNE cause I'm sure it's not Zero and is faster and shorter than JMP loop
-
-
-TextLoaded			TXA
-					STA (HL), Y				; Save mark of end of message, now message is at XmessageBuffer
-
-
-; ---------- Print message
-
-					LDA <#XmessageBuffer   		; LSB of XMessageBuffer
-					STA MSGDATAL
-					LDA >#XmessageBuffer   		; LSB of XMessageBuffer
-					STA MSGDATAH				; DAAD print message code expects data here
-					CLI
-					LDA $0810					; Spanish interpreter has a 0x85 at address $0810, while English one has a 0xDC
-					CMP #$DC
-					BNE +
-					JSR DAAD_PRINT_MSG_C64_EN
-					JMP Eof
-+					JSR DAAD_PRINT_MSG_C64_ES
-					JMP Eof
 
 
 
@@ -488,7 +405,7 @@ XMessage			STX L
 ; -------           Open Messages file
 
 PatchBIT1_2
-					JSR PatchPlus4_2
+					JSR PatchPlus4;_2
 PatchSTA1_2			BIT $ff3e
 					LDA #$0b
 PatchSTA3_2			BIT $ff06
