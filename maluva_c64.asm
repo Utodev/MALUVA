@@ -1,12 +1,13 @@
 ; MALUVA (C) 2018 Uto
 ; LGPL License applies, see LICENSE file
 ; TO BE COMPILED WITH 64tass Turbo Assembler Macro V1.54.1900
-; 64tass.exe -a maluva_c64.asm -o MLV_C64.BIN -b
-; Thanks to Lasse at the lemon64 forums for his invaluable help. Thanks to Iszell for adapting code to be also compatible with Commodore Plus/4
+; This is a Commodore 64 and Commodore Plus/4 addon, same binary file could be used as EXTERN for both interpreters
+; To compile:    64tass.exe -a maluva_c64.asm -o MLV_C64.BIN -b
+; Thanks to Lasse at the lemon64 forums for his invaluable help. Thanks to Imre Iszell for adapting code to be also compatible with Commodore Plus/4
 
-; Please notice this is my first ever code usin the 65xx assembler. I have no previous experience so
-; I haven't worked too much in optimization
+; Please notice this is my first ever code using the 65xx assembler. I have no previous experience so I haven't worked too much in optimization
 
+; ORG $38BC
 *       = $38BC
 
 ; ********************************************************************                        
@@ -14,49 +15,51 @@
 ; *******************************************************************
 
 			
-					PTR              = $02
-					PTR2             = $04
-					DRVNUM           = $BA
-					DRVNUMPLUS4      = $AE
-					KERNAL_SETLFS    = $FFBA
-					KERNAL_SETNAM    = $FFBD 
-					KERNAL_OPEN      = $FFC0
-					KERNAL_CLRCHN    = $FFCC
-					KERNAL_CHKIN     = $FFC6
-					KERNAL_CLOSE     = $FFC3
-					KERNAL_CHRIN     = $FFCF
-					KERNAL_READST	 = $FFB7     
+					PTR              	= $02
+					PTR2             	= $04
+					DRVNUM           	= $BA
+					DRVNUMPLUS4      	= $AE
+					KERNAL_SETLFS    	= $FFBA
+					KERNAL_SETNAM    	= $FFBD 
+					KERNAL_OPEN      	= $FFC0
+					KERNAL_CLRCHN    	= $FFCC
+					KERNAL_CHKIN     	= $FFC6
+					KERNAL_CLOSE     	= $FFC3
+					KERNAL_CHRIN     	= $FFCF
+					KERNAL_READST	 	= $FFB7     
 
-					VIDEORAM_PIXELS  = $E000
-					VIDEORAM_ATTRS   = $CC00
-					VIDEORAM_ATTRS_PLUS4   = $BC00
-					BACKGROUND_COLOR = $D021
-					BACKGROUND_COLOR_PLUS4 = $FF19
+					PIXELS_RAM  		= $E000
+					ATTRS_RAM   		= $CC00
+					PLUS4_ATTRS_RAM   	= $DC00
+					BG_COLOR 			= $D021
+					PLUS4_BG_COLOR 		= $FF19
 
-					DAAD_PRINT_MSG_C64_ES = $1C0D
-					DAAD_PRINT_MSG_C64_EN = $1B78
-					DAAD_PRINT_MSG_PLUS4_ES = $1BFC
-					DAAD_PRINT_MSG_PLUS4_EN = $1B67
+					PLUS4_PAGE_ROM  	= $FF3E 		; Store anything in this address to page in ROM
+					PLUS4_PAGE_RAM  	= $FF3F 		; Store anything in this address to page in RAM
+					PLUS4_SCREEN_CTR	= $FF06			; Bitwise register control several things in the screen
+
+					DDB_ADDRESS 		= $3880			; DAAD DDB load address
 
 ; 					DAAD seems to simulate some Z80 REGS with 0-page addresses
-					BC      	=    253
-					B       	=    254
-					C       	=    253
-					HL     		=    6;251
-					H      		=    7;252
-					L      		=    6;251
-;					Also, DAAD "PRINT" routine expecst data here
-					MSGDATAH   	=     66
-					MSGDATAL   	=     65
+					BC			      	= 253
+					B       			= 254
+					C			       	= 253
+					HL     				= 6 ; it was 251
+					H      				= 7 ; it was 252
+					L      				= 6 ; it was 251
+
+; 					Other Page0 addresses usable for a while
+
+					TempVar     		= 141
+					TempVarH  			= 142
+					TempVarL  			= 141
+
 
 
 ; ********************************************************************                        
 ;                                 MAIN
 ; ********************************************************************
 
-; Extern call will bring first parameter in A register and second parameter in Y register
-
-        	
 Start				PHP							; Save status register
 					SEI 						; Disable interrupt
 					STA     Registro1
@@ -66,6 +69,8 @@ Start				PHP							; Save status register
 					BEQ		LoadImg
 					CMP 	#4
 					BEQ     XPart
+					CMP		#255
+					BEQ 	restoreXmessage
 					CMP 	#3
 					BEQ 	+
 					JMP		CleanExit
@@ -105,9 +110,9 @@ LoadImg				TXA							; Move first parameter (image number) to A
 					PHA
 
 ; Clear the screen
-ClearAttr1          LDA #<VIDEORAM_ATTRS
+ClearAttr1          LDA #<ATTRS_RAM
         			STA PTR
-PatchAttrs1			LDA #>VIDEORAM_ATTRS
+PatchAttrs1			LDA #>ATTRS_RAM
 					STA PTR+1
 					PLA						; Restore number of attr  lines
 					PHA 					; And save it again
@@ -121,16 +126,16 @@ ClearPixels         PLA						; Restore number of attr  lines
 					ASL
 					ASL						; multiply by 8 to get the real number of lines
 					TAX                     ; Move number of lines to X
-					LDA #<VIDEORAM_PIXELS
+					LDA #<PIXELS_RAM
         			STA PTR
-        			LDA #>VIDEORAM_PIXELS
+        			LDA #>PIXELS_RAM
         			STA PTR+1
 					LDY #0					; fill with $00
 					JSR ClearMem
 
-ClearAttr2          LDA #<VIDEORAM_ATTRS
+ClearAttr2          LDA #<ATTRS_RAM
         			STA PTR
-PatchAttrs2			LDA #>VIDEORAM_ATTRS
+PatchAttrs2			LDA #>ATTRS_RAM
 					STA PTR+1
 					PLA						; Restore number of attr  lines
 					STA PTR2			    ; and save it for plus/4
@@ -139,15 +144,15 @@ PatchAttrs2			LDA #>VIDEORAM_ATTRS
 					JSR ClearMem
 
 
-LoadPixels			LDA #<VIDEORAM_PIXELS
+LoadPixels			LDA #<PIXELS_RAM
         			STA PTR
-        			LDA #>VIDEORAM_PIXELS
+        			LDA #>PIXELS_RAM
         			STA PTR+1
 					JSR ReadCompressedBlock
 
-LoadAttrs			LDA #<VIDEORAM_ATTRS
+LoadAttrs			LDA #<ATTRS_RAM
 					STA PTR
-PatchAttrs3 		LDA #>VIDEORAM_ATTRS
+PatchAttrs3 		LDA #>ATTRS_RAM
         			STA PTR+1
 					JSR ReadCompressedBlock
 PatchJSR=*+1
@@ -159,10 +164,10 @@ Eof        			LDA #$02
         			JSR KERNAL_CLRCHN 		; restore input to default channel (keyboard)
 
 PatchSTA2
-CleanExit			BIT $ff3f
+CleanExit			BIT PLUS4_PAGE_RAM				; This may become STA PLUS4_PAGE_RAM on plus/4
 PatchJSR1			BIT ConvertColors
 					LDA #$3b
-PatchSTA4			BIT $ff06
+PatchSTA4			BIT PLUS4_SCREEN_CTR				; THis may become STA PLUS4_SCREEN_CTR on Plus/4
                     LDA #$2c
 					STA PatchJSR1
 					PLP						; Restore status register (and previous interrupt status as interrupt status is a flag just like Z or C)
@@ -185,15 +190,70 @@ XPart 				TXA
 ;                             AUX FUNCTIONS
 ;-------------------------------------------------------------
 
+;Preserves address of Sysmess0 and replaces with XMessageBuffer address
+
+preserveSysmess0	LDY     DDB_ADDRESS + 18 ; Address of Sysmess Table
+        			STY     TempVar
+        			LDY     DDB_ADDRESS + 19
+        			STY     TempVar+1
+					LDY		#0
+					LDA     (TempVar),Y         ;  LSB
+        			STA     PreserveSysmess0L
+					LDA 	<#XmessageBuffer
+					STA 	(TempVar),Y
+        			INY
+        			LDA     (TempVar),Y         ; MSB 
+        			STA     PreserveSysmess0L
+					LDA 	>#XMessageBuffer
+					STA 	(TempVar),Y
+					RTS
+
+restoreSysmes0 		LDY     DDB_ADDRESS + 18 ; Address of Sysmess Table
+        			STY     TempVar
+        			LDY     DDB_ADDRESS + 19
+        			STY     TempVar+1
+					LDY		#0
+					STA     (TempVar),Y         	;  LSB
+					LDA     PreserveSysmess0H
+        			INY
+					STA 	(TempVar),Y				; MSB
+					RTS
+
+preserveBC			LDA		C
+					STA 	PreserveBC_C
+					LDA 	B
+					STA 	PreserveBC_B
+					RTS
+
+restoreBC			LDA		PreserveBC_C
+					STA 	C
+					LDA 	PreserveBC_B
+					STA 	B
+					RTS
+
+					; So this is an unreachable (by the 6502 CPU) piece of codem which is actually DAAD code 
+FakeCondacts		.byte 	$36, 0,	$3D, 0, $FF ; SYSMESS 0 EXTERN 0 255
+
+
+
+
 ; Opens file whose name it's at X-Y and length at A				
 
 OpenFile			STY RegistroY
 					STX RegistroX
 					PHA
-PatchBIT1			JSR PatchPlus4
-PatchSTA1			BIT $ff3e
+
+; Plus/4 stuff
+PatchBIT1			JSR PatchPlus4			 ; This may become BIT PatchPlus4 (what does nothing) when PatchPlus4 has been already run once
+;					PLA
+;					PHA
+;					CMP #255
+;					BEQ PatchSTA1				 ; Avoid screen blankening when loading Xmessages (filename length=2)
 					LDA #$0b
-PatchSTA3			BIT $ff06
+PatchSTA3			BIT PLUS4_SCREEN_CTR	 ; This may become STA PLUS4_SCREEN_CTR if working in Plus/4		
+PatchSTA1			BIT PLUS4_PAGE_ROM       ; This may become STA PLUS4_PAGE_ROM if working in Plus/4		
+; End of Plus/4 stuff
+
 					LDA #0
 					STA SecondaryAddress+1  ; SETLFS for open
 					PLA
@@ -217,8 +277,6 @@ SecondaryAddress	LDY #$00      			; not $01 means: load to address stored in fil
 					RTS
 OpenFileError		PLA						; Just to clear stack return value
 					JMP Eof					
-
-
 
 ; Clears Mem at ($AE), as many bytes as the value received in X multuplied by 40, and filling with the value at Y
 ClearMem			STY ClearValue+1
@@ -301,10 +359,11 @@ DivideL2			ROL Registro2
 -					RTS
 
 PatchPlus4			LDA #$2c
-					STA PatchBIT1			 ; Patch JSR to BIT $xxxx: do not call this patch anymore
+					STA PatchBIT1			 ; Patch JSR PatchPlus4 to BIT PatchPlus4, so we do not call this patch anymore
 					LDA $ff00				 ; Check if we have TED timer1 at $ff00
 					CMP $ff00
 					BEQ -					 ; No, we don't have TED so this is a C64
+
 
 					LDA #$8d				 ; STA $xxxx
 					STA PatchSTA1
@@ -315,33 +374,21 @@ PatchPlus4			LDA #$2c
 					LDA #DRVNUMPLUS4
 					STA PatchDrvNum+1
 
-        			LDA #>VIDEORAM_ATTRS_PLUS4
+        			LDA #>PLUS4_ATTRS_RAM
 					STA PatchAttrs1+1
 					STA PatchAttrs2+1
 					STA PatchAttrs3+1
 					
 					LDA #$20
 					STA PatchJSR			 ; JSR $xxxx
-					LDA #$74				 ; SDIplus4 magic byte
-					STA PatchCMP
-					LDA #<DAAD_PRINT_MSG_PLUS4_ES
-					STA PatchJSR2
-					LDA #>DAAD_PRINT_MSG_PLUS4_ES
-					STA PatchJSR2+1
-					LDA #<DAAD_PRINT_MSG_PLUS4_EN
-					STA PatchJSR3
-					LDA #>DAAD_PRINT_MSG_PLUS4_EN
-					STA PatchJSR3+1
 					RTS
-
-PatchPlus4_2 		RTS					
 
 ConvertColors		LDA PTR2
 					STA Registro1
-					LDA #<VIDEORAM_ATTRS_PLUS4
+					LDA #<PLUS4_ATTRS_RAM
 					STA PTR
 					STA PTR2
-					LDA #>VIDEORAM_ATTRS_PLUS4
+					LDA #>PLUS4_ATTRS_RAM
 					STA PTR+1
 					AND #$F8
 					STA PTR2+1
@@ -382,6 +429,11 @@ ConvertColors		LDA PTR2
 
 ; ---------------------------- XMessage
 
+restoreXmessage		JSR restoreBC
+					JSR restoreSysmes0
+					JMP CleanExit
+
+
 ; We get here wih the LSB of the offset at X and the MSB at the next place pointed by 'BC'
 XMessage			STX L
 					INC C
@@ -403,31 +455,11 @@ XMessage			STX L
 					STA XmessageFilename + 0  ; File name string is now ready
 
 ; -------           Open Messages file
-
-PatchBIT1_2
-					JSR PatchPlus4;_2
-PatchSTA1_2			BIT $ff3e
-					LDA #$0b
-PatchSTA3_2			BIT $ff06
-					LDA #0
-					STA SecondaryAddress2+1  ; SETLFS for open
 					LDA #$02
         			LDX #<XmessageFilename
         			LDY #>XmessageFilename
-		 			JSR KERNAL_SETNAM
-        			LDA #$02				; Logical number
-PatchDrvNum_2		LDX DRVNUM       		; last used device number
-        			BNE SecondaryAddress2
-        			LDX #$08      			; default to device 8
-SecondaryAddress2	LDY #$00      			; not $01 means: load to address stored in file
-        			JSR KERNAL_SETLFS
-					JSR KERNAL_OPEN 		; open file
-        			BCC +
-					JMP CleanExit
-+					LDX #$02				; Use file #2 for input/output
-        			JSR KERNAL_CHKIN		; Set input to file
-					JSR KERNAL_READST
-        			BNE Eof      
+					JSR OpenFile
+
 
 ; --------  Simulate fseek					
 					LDA H	
@@ -470,20 +502,12 @@ TextLoaded			TXA
 
 ; ---------- Print message
 
-					LDA <#XmessageBuffer   		; LSB of XMessageBuffer
-					STA MSGDATAL
-					LDA >#XmessageBuffer   		; LSB of XMessageBuffer
-					STA MSGDATAH				; DAAD print message code expects data here
-					CLI
-					LDA $0810					; Spanish interpreter has a 0x93 at address $0810
-PatchCmp=*+1
-					CMP #$93
-					BNE +
-PatchJSR2=*+1
-					JSR DAAD_PRINT_MSG_C64_ES
-					JMP Eof
-PatchJSR3=*+1
-+					JSR DAAD_PRINT_MSG_C64_EN
+XmessPrintMsg		JSR 	preserveBC
+					JSR 	preserveSysmess0
+					LDA		<#FakeCondacts-1
+					STA 	C
+					LDA	 	>#FakeCondacts-1
+					STA 	B
 					JMP Eof
 
 ; ------------------------------- Variables and tables  -----------------
@@ -506,6 +530,11 @@ Registro2           .byte 0
 ; ------------------------------------ Variables to preserve register Y while extern is running
 RegistroX			.byte 0			
 RegistroY			.byte 0			
+; ------------------------------------
+PreserveSysmess0L	.byte 0
+PreserveSysmess0H   .byte 0
+PreserveBC_C		.byte 0
+PreserveBC_B		.byte 0
 ;------------------------ Buffer is left last on purpose, so in case someone does not use xmessages, the binary file can be cutted to have 512 bytes less
 XmessageBuffer		.fill   511
 XmessageBufferLast  .byte 0			; .fill doesn't work if there is nothing after the fill, so instead of a 512 bytes fill, I do 511 and then a "db"
