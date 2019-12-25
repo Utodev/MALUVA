@@ -3,7 +3,7 @@
 ; TO BE COMPILED WITH 64tass Turbo Assembler Macro V1.54.1900
 ; This is a Commodore 64 and Commodore Plus/4 addon, same binary file could be used as EXTERN for both interpreters
 ; To compile:    64tass.exe -a maluva_c64.asm -o MLV_C64.BIN -b
-; Thanks to Lasse at the lemon64 forums for his invaluable help. Thanks to Imre Iszell for adapting code to be also compatible with Commodore Plus/4
+; Thanks to Lasse at the lemon64 forums for his invaluable help. Thanks to Imre Szell for adapting code to be also compatible with Commodore Plus/4
 
 ; Please notice this is my first ever code using the 65xx assembler. I have no previous experience so I haven't worked too much in optimization
 
@@ -16,9 +16,7 @@
 
 			
 					PTR              	= $02
-					PTR2             	= $04
 					DRVNUM           	= $BA
-					DRVNUMPLUS4      	= $AE
 					KERNAL_SETLFS    	= $FFBA
 					KERNAL_SETNAM    	= $FFBD 
 					KERNAL_OPEN      	= $FFC0
@@ -30,13 +28,7 @@
 
 					PIXELS_RAM  		= $E000
 					ATTRS_RAM   		= $CC00
-					PLUS4_ATTRS_RAM   	= $DC00
 					BG_COLOR 			= $D021
-					PLUS4_BG_COLOR 		= $FF19
-
-					PLUS4_PAGE_ROM  	= $FF3E 		; Store anything in this address to page in ROM
-					PLUS4_PAGE_RAM  	= $FF3F 		; Store anything in this address to page in RAM
-					PLUS4_SCREEN_CTR	= $FF06			; Bitwise register control several things in the screen
 
 					DDB_ADDRESS 		= $3880			; DAAD DDB load address
 
@@ -112,7 +104,7 @@ LoadImg				TXA							; Move first parameter (image number) to A
 ; Clear the screen
 ClearAttr1          LDA #<ATTRS_RAM
         			STA PTR
-PatchAttrs1			LDA #>ATTRS_RAM
+					LDA #>ATTRS_RAM
 					STA PTR+1
 					PLA						; Restore number of attr  lines
 					PHA 					; And save it again
@@ -135,10 +127,9 @@ ClearPixels         PLA						; Restore number of attr  lines
 
 ClearAttr2          LDA #<ATTRS_RAM
         			STA PTR
-PatchAttrs2			LDA #>ATTRS_RAM
+					LDA #>ATTRS_RAM
 					STA PTR+1
 					PLA						; Restore number of attr  lines
-					STA PTR2			    ; and save it for plus/4
         			TAX						; and move to X
 					LDY #$B0				; Fill with B0 color
 					JSR ClearMem
@@ -152,25 +143,16 @@ LoadPixels			LDA #<PIXELS_RAM
 
 LoadAttrs			LDA #<ATTRS_RAM
 					STA PTR
-PatchAttrs3 		LDA #>ATTRS_RAM
+			 		LDA #>ATTRS_RAM
         			STA PTR+1
 					JSR ReadCompressedBlock
-PatchJSR=*+1
-					LDA #$2c
-					STA PatchJSR1
 
 Eof        			LDA #$02
         			JSR KERNAL_CLOSE  		; close file
         			JSR KERNAL_CLRCHN 		; restore input to default channel (keyboard)
 
-PatchSTA2
-CleanExit			BIT PLUS4_PAGE_RAM				; This may become STA PLUS4_PAGE_RAM on plus/4
-PatchJSR1			BIT ConvertColors
-					LDA #$3b
-PatchSTA4			BIT PLUS4_SCREEN_CTR				; THis may become STA PLUS4_SCREEN_CTR on Plus/4
-                    LDA #$2c
-					STA PatchJSR1
-					PLP						; Restore status register (and previous interrupt status as interrupt status is a flag just like Z or C)
+
+CleanExit			PLP						; Restore status register (and previous interrupt status as interrupt status is a flag just like Z or C)
 					RTS
 
 
@@ -243,17 +225,6 @@ OpenFile			STY RegistroY
 					STX RegistroX
 					PHA
 
-; Plus/4 stuff
-PatchBIT1			JSR PatchPlus4			 ; This may become BIT PatchPlus4 (what does nothing) when PatchPlus4 has been already run once
-;					PLA
-;					PHA
-;					CMP #255
-;					BEQ PatchSTA1				 ; Avoid screen blankening when loading Xmessages (filename length=2)
-					LDA #$0b
-PatchSTA3			BIT PLUS4_SCREEN_CTR	 ; This may become STA PLUS4_SCREEN_CTR if working in Plus/4		
-PatchSTA1			BIT PLUS4_PAGE_ROM       ; This may become STA PLUS4_PAGE_ROM if working in Plus/4		
-; End of Plus/4 stuff
-
 					LDA #0
 					STA SecondaryAddress+1  ; SETLFS for open
 					PLA
@@ -261,7 +232,7 @@ PatchSTA1			BIT PLUS4_PAGE_ROM       ; This may become STA PLUS4_PAGE_ROM if wor
 					LDY RegistroY
 		 			JSR KERNAL_SETNAM
         			LDA #$02				; Logical number
-PatchDrvNum			LDX DRVNUM       		; last used device number
+					LDX DRVNUM       		; last used device number
         			BNE SecondaryAddress
         			LDX #$08      			; default to device 8
 SecondaryAddress	LDY #$00      			; not $01 means: load to address stored in file
@@ -358,74 +329,6 @@ DivideL2			ROL Registro2
 					LDX Registro2
 -					RTS
 
-PatchPlus4			LDA #$2c
-					STA PatchBIT1			 ; Patch JSR PatchPlus4 to BIT PatchPlus4, so we do not call this patch anymore
-					LDA $ff00				 ; Check if we have TED timer1 at $ff00
-					CMP $ff00
-					BEQ -					 ; No, we don't have TED so this is a C64
-
-
-					LDA #$8d				 ; STA $xxxx
-					STA PatchSTA1
-					STA PatchSTA2
-					STA PatchSTA3
-					STA PatchSTA4
-
-					LDA #DRVNUMPLUS4
-					STA PatchDrvNum+1
-
-        			LDA #>PLUS4_ATTRS_RAM
-					STA PatchAttrs1+1
-					STA PatchAttrs2+1
-					STA PatchAttrs3+1
-					
-					LDA #$20
-					STA PatchJSR			 ; JSR $xxxx
-					RTS
-
-ConvertColors		LDA PTR2
-					STA Registro1
-					LDA #<PLUS4_ATTRS_RAM
-					STA PTR
-					STA PTR2
-					LDA #>PLUS4_ATTRS_RAM
-					STA PTR+1
-					AND #$F8
-					STA PTR2+1
--					LDY #39
--					LDA (PTR),Y
-					PHA
-					AND #$0f
-					TAX
-					LDA bclrtab,x
-					STA (PTR),Y
-					LDA blumtab,x
-					STA (PTR2),Y
-					PLA
-					LSR
-					LSR
-					LSR
-					LSR
-					TAX
-					LDA fclrtab,x
-					ORA (PTR),Y
-					STA (PTR),Y
-					LDA flumtab,x
-					ORA (PTR2),Y
-					STA (PTR2),Y
-					DEY
-					BPL -
-					CLC
-					LDA #40
-					ADC PTR
-					STA PTR
-					STA PTR2
-					BCC +
-					INC PTR+1
-					INC PTR2+1
-+					DEC Registro1
-					BNE --
-					RTS
 
 ; ---------------------------- XMessage
 
@@ -514,14 +417,6 @@ XmessPrintMsg		JSR 	preserveBC
 
 Filename			.text 	'00064'          ; 000 will be replaced by location number (i.e. 128, 078, 003)
 XmessageFilename	.text   '00'			 ; 00 will be replaced by file number depending on offset
-bclrtab				.byte $00, $01, $02, $03, $04, $05, $06, $07
-					.byte $08, $09, $02, $01, $01, $05, $0e, $01
-fclrtab				.byte $00, $10, $20, $30, $40, $50, $60, $70
-					.byte $80, $90, $20, $10, $10, $50, $e0, $10
-blumtab				.byte $00, $70, $30, $40, $30, $40, $10, $60
-					.byte $30, $00, $40, $20, $40, $60, $40, $50
-flumtab				.byte $00, $07, $03, $04, $03, $04, $01, $06
-					.byte $03, $00, $04, $02, $04, $06, $04, $05
 
 XPartPart			.byte 0
 ; ------------------------------------ Additional memory address used as auxiliary register
