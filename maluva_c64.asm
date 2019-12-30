@@ -26,9 +26,12 @@
 					KERNAL_CHRIN     	= $FFCF
 					KERNAL_READST	 	= $FFB7     
 
-					PIXELS_RAM  		= $E000
-					ATTRS_RAM   		= $CC00
+					BITMAP_RAM  		= $E000			; Placed here by DAAD
+					SCREEN_RAM   		= $CC00			; Placed here by DAAD
+					COLOR_RAM   		= $D800			; This doesn't ever move
 					BG_COLOR 			= $D021
+					GRAPH_MODE			= $D011
+					BITMAP_MODE			=$D016
 
 					DDB_ADDRESS 		= $3880			; DAAD DDB load address
 
@@ -61,6 +64,8 @@ Start				PHP							; Save status register
 					BEQ		LoadImg
 					CMP 	#4
 					BEQ     XPart
+					CMP 	#6
+					BEQ 	XSplitScr
 					CMP		#255
 					BEQ 	restoreXmessage
 					CMP 	#3
@@ -70,7 +75,8 @@ Start				PHP							; Save status register
 					
 
 ; ---- Set the filename
-LoadImg				TXA							; Move first parameter (image number) to A
+LoadImg				JSR 	HideScreen
+					TXA							; Move first parameter (image number) to A
 					LDY   	#100				; Divide by 100
 					JSR 	Divide              
 					PHA							; preseve reminder
@@ -94,17 +100,24 @@ LoadImg				TXA							; Move first parameter (image number) to A
 					LDA     #5
 					JSR 	OpenFile
 
-					JSR KERNAL_CHRIN		; Read number of attribute lines
-					STA Registro1			; Save number of attr lines
-					JSR KERNAL_READST		; Read file status
-        			BNE Eof      			; either EOF or read error, leave
-					LDA Registro1
+					LDA 	#$4C				; JMP opcode
+					STA 	PatchJMP			; Make sure instruction at PatchBMP is JMP Eof so SCREEN area is not loaded
+					JSR 	KERNAL_CHRIN		; Read number of attribute lines
+					AND 	#$FF 				; Just to update flags
+					BNE     IsHiRes	   			; If number of attributes != 0, is a HiRes picture
+					LDA 	#$2C
+					STA 	PatchJMP			; Make sure instruction at PatchBMP is BIT Eof, so SCREEN area is loaded
+					JSR 	KERNAL_CHRIN		; Read number of attribute lines again, as first byte was just a flag
+IsHiRes				STA 	Registro1			; Save number of attr lines
+					JSR 	KERNAL_READST		; Read file status
+        			BNE 	Eof      			; either EOF or read error, leave
+					LDA 	Registro1
 					PHA
 
 ; Clear the screen
-ClearAttr1          LDA #<ATTRS_RAM
+ClearAttr1          LDA #<SCREEN_RAM
         			STA PTR
-					LDA #>ATTRS_RAM
+					LDA #>SCREEN_RAM
 					STA PTR+1
 					PLA						; Restore number of attr  lines
 					PHA 					; And save it again
@@ -118,59 +131,265 @@ ClearPixels         PLA						; Restore number of attr  lines
 					ASL
 					ASL						; multiply by 8 to get the real number of lines
 					TAX                     ; Move number of lines to X
-					LDA #<PIXELS_RAM
+					LDA #<BITMAP_RAM
         			STA PTR
-        			LDA #>PIXELS_RAM
+        			LDA #>BITMAP_RAM
         			STA PTR+1
 					LDY #0					; fill with $00
 					JSR ClearMem
 
-ClearAttr2          LDA #<ATTRS_RAM
+ClearAttr2          LDA #<SCREEN_RAM
         			STA PTR
-					LDA #>ATTRS_RAM
+					LDA #>SCREEN_RAM
 					STA PTR+1
 					PLA						; Restore number of attr  lines
         			TAX						; and move to X
-					LDY #$B0				; Fill with B0 color
+					LDY #$B0					; Fill with B0 color
 					JSR ClearMem
+;TE FALTA QUE FUNCIONEN BIEN LOS COLORES EN HiRes
 
-
-LoadPixels			LDA #<PIXELS_RAM
+LoadPixels			LDA #<BITMAP_RAM
         			STA PTR
-        			LDA #>PIXELS_RAM
+        			LDA #>BITMAP_RAM
         			STA PTR+1
 					JSR ReadCompressedBlock
 
-LoadAttrs			LDA #<ATTRS_RAM
+LoadAttrs			LDA #<SCREEN_RAM
 					STA PTR
-			 		LDA #>ATTRS_RAM
+			 		LDA #>SCREEN_RAM
         			STA PTR+1
 					JSR ReadCompressedBlock
+PatchJMP			JMP Eof						; May be replaced by BIT Eof if image is Multicolor
+
+LoadScreen			LDA #<COLOR_RAM
+					STA PTR
+			 		LDA #>COLOR_RAM
+        			STA PTR+1
+					JSR ReadCompressedBlock
+
+LoadBGColor			JSR	KERNAL_CHRIN
+					STA BG_COLOR
+
+					
 
 Eof        			LDA #$02
         			JSR KERNAL_CLOSE  		; close file
         			JSR KERNAL_CLRCHN 		; restore input to default channel (keyboard)
 
+CleanExit			LDA ActiveIntHandler	; if int handler active, restart the process to set blaster interrupt
+					BEQ CleanExit2
+					JSR RestoreRasterInt
 
-CleanExit			PLP						; Restore status register (and previous interrupt status as interrupt status is a flag just like Z or C)
+CleanExit2			JSR 	ShowScreen
+					PLP						; Restore status register (and previous interrupt status as interrupt status is a flag just like Z or C)
+					CLI
 					RTS
 
 
 ; ----------------------------- Xpart --- Handles wich part (part 1 or part 2 of the game is being played)
 
 XPart 				TXA
-					BEQ CleanExit	; If part == 0 just ignore
+					BEQ +	; If part == 0 just ignore
 					LDA #50
-					STA XPartPart
++					STA XPartPart
 					JMP CleanExit
 
 
+XSplitScr			TXA
+					BEQ SetOldHandler		; If parameter= 0, standard DAAD mode
 
+SetNewHandler		LDA ActiveIntHandler
+					BNE SetNewIntHandler	; If already active we just retore everything but we don't preserve the old pointer
+					LDA CINV
+					STA OldIntHandler
+					LDA CINV+1
+					STA OldIntHandler + 1
+SetNewIntHandler	LDA <#IntHandler		; Set new pointer
+					STA CINV
+					LDA >#IntHandler
+					STA CINV+1
+					LDA #1
+					STA ActiveIntHandler ; Maluva Int Handler Active
+					JSR RestoreRasterInt ; Force first raster int, in case it's inactive
+					JMP CleanExit
+
+SetOldHandler		LDA ActiveIntHandler 
+					BEQ +					; If Handler is not active we don't deactivate
+					LDA OldIntHandler
+					STA CINV
+					LDA OldIntHandler+1
+					STA CINV+1
+					LDA #0
+					STA ActiveIntHandler ; Set as deactivated
++					JMP CleanExit					
+
+
+
+
+
+; --------------------------- Interrupt ---------------------------
+ ; This code  basically replaces the DAAD interpreter interrupt code. Instead of patching it on the fly, and to avoid 
+ ; issues 
+
+					CINV    =   $0314       ; C64 Hardware Interrupt Vector
+					MOSIO   =   1           ;System memory organization
+											;Bit 0 - LORAM: Configures RAM or ROM at $A000-$BFFF (see bankswitching)
+											;Bit 1 - HIRAM: Configures RAM or ROM at $E000-$FFFF (see bankswitching)
+											;Bit 2 - CHAREN: Configures I/O or ROM at $D000-$DFFF (see bankswitching)
+											;Bit 3 - Cassette Data Output Line (Datasette)
+											;Bit 4 - Cassette Switch Sense; 1 = Switch Closed
+											;Bit 5 - Cassette Motor Control; 0 = On, 1 = Off
+											;Bit 6 - Undefined
+											;Bit 7 - Undefined
+					FLAG    =   $02A7       ;Misc variables area
+
+					IFLAGS  = 	$02DD      	;Interupt mode flags
+                                			;Bit 7 - Kernal Out (1=Kernal Out, 0 = Kernal In)
+                                			;Bit 6-5 scanline chosen flag 00 -> Waiting for top scanline, 10 ---> Waiting for middle scanline, 11 --> Waiting gor bottom scanline
+
+					OLDIRQ  =   $02DE      	; Place where DAAD has preserved old IRQ Handler
+					FRAMES  = 	$02E0	   	 
+					RASFLG	= 	$02E2       ; Allows screen sync to raster point.
+					SCBRK	= 	$02F1		; 
+					RASTER_COMPARE = $D012
+					INT_FLAGS_REGISTER  = $D019
+					IRQ_MASK_REGISTER = $D01A
+
+IntHandler  		LDA     MOSIO           ;Save system state
+					PHA
+					ORA     #$02            
+					STA     MOSIO			;Ensure Kernal & I/O!!!
+					
+					BIT     IFLAGS          ; BIT  bit 6 of tested address to overflow flag (V)
+					BVS     RasterNonTop    ; So if we jump if but 6 if iflags != 0, that is this is not the top scanline call
+											; 
+
+RasterTop			INC     FRAMES
+					LDA     FRAMES          ;This counts 20m/s (1/50 sec!)
+					CMP     #64
+					BNE     RasterTopCont
+					INC     FRAMES+1        ;This counts 64*20m/s!
+					LDA     #$00
+					STA     FRAMES
+					
+		
+RasterTopCont		JSR 	SetGRMulticolor
+					LDA     IFLAGS
+					ORA     #$40      		; wait for PARTIAL POS, sets bit 6 of IFLAGS
+					AND 	#$DF			; clear bit 5 of IFLAGs to identify we are looking for middel raster line
+					STA     IFLAGS
+					LDA		#148 		; Middle screen scanline
+					JSR     SetRasterInterrupt			
+
+					; JSR	INTVEC			; Jump to user defined interrupt code, disabled
+
+					BIT		IFLAGS			; See if Kernal available; Again, copy bit 7 to S flag (sign)
+					BMI     RasterExit		; Branch if minus (S flag set, that is Kernal NOT Available)
+
+					PLA                     ;Restore system
+					STA     MOSIO           ;(which probably wasn't changed)
+
+					JMP     (OLDIRQ)        ;service ROM IRQ
+
+; ------------------ Now we have to determine if we got here waiting for middle scanline or bottom scanline
+RasterNonTop   		LDA     IFLAGS
+					AND 	#$20 			; Check bit 5
+					BEQ 	RasterMiddle	; Middle raster line
+
+; We were waiting for bottom raster line
+RasterBottom		LDA 	IFLAGS
+					AND		#$9F  			; Clears bit 6 and bit 5
+					STA     IFLAGS          ;wait for start of screen
+					LDA     #$00
+					STA     RASFLG          ;Flag that raster has been reached
+					JSR     SetRasterInterrupt			; Set raster interrupt at line 0
+					JMP 	RasterExit
+
+; We were waiting for middle raster line
+RasterMiddle		LDA 	IFLAGS			
+					ORA 	#$20				; Sets bit 5 of if flags (looking for bottom raster line)
+					STA 	IFLAGS								
+					LDA		#241			; Bottom scanline
+					JSR     SetRasterInterrupt			; Ahd set raster ionterrupt to ($2F1) + 49, which happens when the screen has completely been painted
+					JSR 	SetGRHiResolution
+
+RasterExit   		PLA
+        			STA     MOSIO           ;Restore System.
+
+					PLA                     ;recall registers stored by ROM
+					TAY
+					PLA
+					TAX
+					PLA
+					CLI
+					RTI
+
+;A short subroutine to select a raster interupt at the value held in reg. A
+
+SetRasterInterrupt	STA     RASTER_COMPARE         ;LSB of raster compare
+					LDA     GRAPH_MODE
+					AND		#$7F
+					STA     GRAPH_MODE      	; Higher Bit of GRAPH_MODE is tyhe 9th bit for raster compare
+					LDA     #$01            	;clear any outstanding raster IRQ's
+					STA     INT_FLAGS_REGISTER
+					LDA     IRQ_MASK_REGISTER	;enable raster IRQ's
+					ORA     #$01
+					STA     IRQ_MASK_REGISTER
+					RTS
+
+               
+
+SetGRMulticolor	    LDA GRAPH_MODE
+					AND #$BF
+					ORA #$20
+					STA GRAPH_MODE
+					LDA BITMAP_MODE
+					ORA #$10
+					STA BITMAP_MODE
+					RTS
+
+SetGRHiResolution   LDA GRAPH_MODE
+					AND #$BF
+					ORA #$20
+					STA GRAPH_MODE
+					LDA BITMAP_MODE
+					AND #$EF
+					STA BITMAP_MODE
+					RTS
 
 
 ;-------------------------------------------------------------
 ;                             AUX FUNCTIONS
 ;-------------------------------------------------------------
+
+
+; ShowScreen
+
+ShowScreen			PHA
+					LDA 	GRAPH_MODE
+					ORA 	#$10
+					STA 	GRAPH_MODE
+					PLA
+					RTS
+
+HideScreen			PHA
+					LDA 	ActiveIntHandler
+					BEQ 	+
+					LDA 	GRAPH_MODE
+					AND 	#$EF
+					STA 	GRAPH_MODE
++					PLA
+					RTS
+					
+
+
+; After the disk is used (image, xmessage, save, load, if split screen is active we request another raster interrupt, cause last one may have been missed)
+RestoreRasterInt   	LDA IFLAGS
+					AND #$BF				; Clear Iflags bits 6 and 5
+					LDA #0
+					JSR SetRasterInterrupt
+					RTS
+
 
 ;Preserves address of Sysmess0 and replaces with XMessageBuffer address
 
@@ -328,8 +547,6 @@ DivideL2			ROL Registro2
    					BNE DivideL1
 					LDX Registro2
 -					RTS
-
-
 ; ---------------------------- XMessage
 
 restoreXmessage		JSR restoreBC
@@ -338,7 +555,8 @@ restoreXmessage		JSR restoreBC
 
 
 ; We get here wih the LSB of the offset at X and the MSB at the next place pointed by 'BC'
-XMessage			STX L
+XMessage			JSR HideScreen
+					STX L
 					INC C
 					BNE +
 					INC B   	; Increase BC, which DAAD uses as PC counter
@@ -356,6 +574,7 @@ XMessage			STX L
 					TXA
 					ADC 	#'0'				; inc to ascii equivalence
 					STA XmessageFilename + 0  ; File name string is now ready
+					JSR HideScreen
 
 ; -------           Open Messages file
 					LDA #$02
@@ -430,6 +649,10 @@ PreserveSysmess0L	.byte 0
 PreserveSysmess0H   .byte 0
 PreserveBC_C		.byte 0
 PreserveBC_B		.byte 0
+; ------------------------------------
+OldIntHandler		.byte 0, 0
+ActiveIntHandler	.byte 0
 ;------------------------ Buffer is left last on purpose, so in case someone does not use xmessages, the binary file can be cutted to have 512 bytes less
 XmessageBuffer		.fill   511
 XmessageBufferLast  .byte 0			; .fill doesn't work if there is nothing after the fill, so instead of a 512 bytes fill, I do 511 and then a "db"
+EndOfCode=*
