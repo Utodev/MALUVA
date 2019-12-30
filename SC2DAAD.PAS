@@ -5,7 +5,7 @@ PROGRAM SC2DRG;
 USES sysutils;
 
 CONST TWO_KILOBYTES = 2048;
-	  VERSION = '0.4';
+	  VERSION = '0.6';
 
 
 TYPE cpcHeaderType =  ARRAY[0..127] of Byte;
@@ -77,7 +77,7 @@ BEGIN
 	END;
     IF uppercase(target)='C64'	THEN
     BEGIN
-		WriteLn('For C64 you will require an Art Studio .ART file (9002 bytes), a dump of C64 High Resolution mode.');
+		WriteLn('For C64 you will require an Art Studio .ART file if you will be using the DAADs standard mode (HiRes) or a .KOA/.KLA file if you will use split screen and Multicolor Images. SC2DAAD will determine the file format by the file extension.');
 		Writeln();
 		WriteLn('You should specify the number of lines from top you want to include in the image. Number of lines should be a multiple of 8.');
 		Writeln();
@@ -529,12 +529,14 @@ BEGIN
     BlockWrite(outFile, PreviousValueCount, 1); // Mark of compression
 END;
 
-PROCEDURE C64(inputFilename, outputFilename: string; lines:byte);
+
+
+PROCEDURE C64ART(inputFilename, outputFilename: string; lines:byte);
 VAR inFile, outFile: FILE;
 		Aux : byte;
 		DataBuffer : pointer;
 	(* 
-	 C64 FILE FORMAT IS:
+	 C64 HiRes FILE FORMAT IS:
 	 00    : number of lines div 8
 	 01	   : byte which is used to show repeats in RLE encoding
 	 02-   : RLE encoded compressed bytes for the screen pixels
@@ -542,13 +544,14 @@ VAR inFile, outFile: FILE;
 	 nn+1-   : RLE encoded attributes
 	*)
 BEGIN
+	
 	AssignFile(inFile, inputFilename);
 	TRY
 	Reset(inFile, 1);
 	EXCEPT
-	 on E: Exception DO Error('Invalid C64 KOA file:' + E.message);
+	 on E: Exception DO Error('Invalid C64 ART file:' + E.message);
 	END; 
-	if (FileSize(inFile)<>9002) AND (FileSize(inFile)<>9009) THEN Error('Invalid file. File size must be 9002 or 9009 bytes (Art Studio HiRes .art file).');
+	if (FileSize(inFile)<>9002) AND (FileSize(inFile)<>9009) THEN Error('Invalid file. File size must be 9002 or 9009 bytes (Art Studio HiRes .ART file).');
 	AssignFile(outFile, outputFilename);
 	TRY
 	Rewrite(outFile, 1);
@@ -573,6 +576,82 @@ BEGIN
 	CloseFile(inFile);
 	CloseFile(outFile);
 END;
+
+PROCEDURE C64KOA(inputFilename, outputFilename: string; lines:byte);
+VAR 	inFile, outFile: FILE;
+		Aux : byte;
+		DataBuffer : pointer;
+		ExtLines: Byte;
+	(* 
+	 C64 Multicolor FILE FORMAT IS:
+	 00    : always 0  - Marks the file is a Multicolor image
+	 01	   ; number of lines divided by 8
+	 02	   : byte which is used to show repeats in RLE encoding of BITMAP
+	 03-   : RLE encoded compressed bytes for the screen pixels
+	 nn-   : byte which is used to show repeats in COLOR for RLE encoding
+	 nn+1- : RLE encoded COLOR
+	 qq-   : bytes which is used to show repeats in SCREEN for 
+	 qq+1- : RLE encoded SCREEN
+	*)
+
+	(* Important note: to avoid glitches in the split scanline, this converter will always generate a picture 8 pixels higher than asked. The last 8 scanlines are filled
+	   with 01010101, which makes every pixel have color 01. THen in the color area, that zone is filled with zero, which will make colors 01 and 10 be black. That way
+	   we will have a 8 pixels high black ribbon. Then the split are is place in the middle of that area *)
+BEGIN
+	AssignFile(inFile, inputFilename);
+	TRY
+	Reset(inFile, 1);
+	EXCEPT
+	 on E: Exception DO Error('Invalid C64 KOA/KLA file:' + E.message);
+	END; 
+	if FileSize(inFile)<>10003 THEN Error('Invalid file. File size must be 10001 bytes long (Standard .KOA/.KLA).');
+	AssignFile(outFile, outputFilename);
+	TRY
+	Rewrite(outFile, 1);
+	EXCEPT
+	 on E: Exception DO Error('Can''t open file for output:' + E.message);
+	END; 
+
+	If Lines<>96 THEN Error('Multicolor images for C64 must be 96 pixels high, as the split area is fixed.');
+	
+	Aux := 0;
+	BlockWrite(outFile,Aux,1); // Mark of Multicolor file
+	ExtLines := Lines + 8;
+	Aux := Extlines div 8;
+	BlockWrite(outFile,Aux,1); // Number of lines divided by 8
+	
+	GetMem(DataBuffer, ExtLines * 40); 
+
+	Seek(inFile, 2); //Go bitmap area (2 byte C64 header)
+	FillChar(DataBuffer^, Extlines * 40, $55); // Fill 8 scanlines more with 01010101
+	BlockRead(inFile, DataBuffer^, lines* 40);
+	WriteRLECompresssion(outFile, DataBuffer, ExtLines * 40);
+
+	Seek(inFile, 8002); // Go to SCREEN area
+	FillChar(DataBuffer^,(ExtLines div 8)*40 , 0); // Make sure all colors are color 0
+  	BlockRead(inFile, DataBuffer^, (lines div 8) * 40);
+  	WriteRLECompresssion(outFile, DataBuffer, (Extlines div 8) * 40);
+
+	Seek(inFile, 9002); // Go to COLOR area
+	FillChar(DataBuffer^,(Extlines div 8)*40 , 0); // Make sure all colors are color 0 too
+  	BlockRead(inFile, DataBuffer^, (lines div 8)*40);
+  	WriteRLECompresssion(outFile, DataBuffer, (Extlines div 8)*40);
+    Seek(inFile, Filesize(InFile)-1); // Go to Bakcground value
+	BlockRead(inFile, DataBuffer^,1);
+	BlockWrite(outFile, DataBuffer^,1);
+	CloseFile(inFile);
+	CloseFile(outFile);
+END;
+
+
+PROCEDURE C64(inputFilename, outputFilename: string; lines:byte);
+VAR ext : AnsiString;
+BEGIN
+	ext := AnsiUpperCase(ExtractFileExt(inputFilename));
+    IF (ext = '.KOA') OR (ext='.KLA') THEN C64KOA(inputFilename, outputFilename, lines)
+	ELSE C64ART(inputFilename, outputFilename, lines);
+END;	
+
 
 
 VAR target, inputFilename, outputFilename: string;
