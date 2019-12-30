@@ -60,7 +60,7 @@ Start
 						CP 		5
 						JP  	Z, XBeep
 						CP 		6
-						JP 		Z, XCPCSplit
+						JP 		Z, XSplitScreen
 						CP 		255
 						JP 		Z, RestoreXMessage
 						OR 		A
@@ -88,9 +88,7 @@ LoadPictureCont			LD 	A, D		; Restore first parameter
 						CALL SilenceFW
 
 ; Determine if we make a fade to black 
-DoFadeToBlack			LD  	A, FADE_TO_BLACK
-						OR 		A
-						CALL 	NZ, HideScreen
+DoFadeToBlack			CALL 	NZ, HideScreen
 						CALL 	WaitForVsync
 
 
@@ -216,14 +214,25 @@ cleanExit2				EI
 						RET
 
 
-XCPCSplit				LD 		A, D
-						AND 	$80
-						LD 		HL, DoFadeToBlack + 1
-						LD 		(HL), A
-												
 
-XCPCSplitCont			LD 		A, D
-						AND 	$3
+; Please notice parameter <mode> of XSPLITSCREEN doesn't directly match with video modes. For CPC it works like this:
+;<Mode> 	upper/lower video mode
+; 0               1  /   1        (default)
+; 1               0  /   1
+; 2               2  /   1
+; 3 or above are invaluid, will default to <0> --> 1/1
+
+XSplitScreen			LD 		A, D							; We will store real CPC video mode at E register, to be used later
+						LD 		E, 2
+						CP 		2
+						JR 		Z, XSplitScreenCont				; If mode = 2 them upper screen video mode it's also 2
+						LD 		E, 1
+						CP 		3
+						JR 		NC, XSplitScreenCont			; If no carry, then mode was above 2, we leave with E=1 (upper video mode 1, as <modes> above 2 are invalida), OK
+						XOR 	1								; If below below 2, then it could only be 1 or 0, this XOR changes 0 to 1 or 1 to 0
+						LD 		E, A							; And we store the upper mode in E, cause as you see in the table above, when <mode> is 0, upper video mode is 1, and viceversa
+						
+XSplitScreenCont		LD 		A, 1							; For the time being, lower screen mode is always 1
 						LD	 	HL, IntPatch2L+1				; Lower  Screen Mode
 						LD 		(HL),A
 						LD	 	HL, IntPatch3L+1				; Lower  Screen Mode
@@ -233,11 +242,8 @@ XCPCSplitCont			LD 		A, D
 						LD	 	HL, IntPatch5L+1				; Lower  Screen Mode
 						LD 		(HL),A
 
-						LD 		A, D
-						SRA 	A
-						SRA 	A
-						AND 	$3
-						LD	 	HL, IntPatch1U+1				; Upper  Screen Mode
+						LD 		A, E							; Upper  Screen Mode
+						LD	 	HL, IntPatch1U+1				
 						LD 		(HL),A
 						JR 		cleanExit2
 
@@ -566,22 +572,6 @@ HideScreen				LD 	HL, PaletteBuffer
 						CALL SetPalette
 						RET
 
-;						LD B, 8
-;						LD HL, VRAM_ADDR
-;HideLoop				LD (HL), 0
-;						PUSH BC
-;						PUSH HL
-;						LD BC, 64*12 -1
-;						POP  DE
-;						PUSH DE
-;						INC DE					
-;						LDIR 
-;						POP HL
-;						LD BC, $800
-;						ADD HL, BC
-;						POP BC
-;						DJNZ HideLoop
-;						RET
 
 
 Filename				DB 	"000.CPC"
@@ -606,7 +596,7 @@ EndOfMainCode
 						ORG EndOfMainCode
             			OUTPUT "MLV_CPC_INT.BIN",t					; Save to a separated file
 
-; ------------ Interrupt handler for XCPCSPLIT, called on Frame Flyback
+; ------------ Interrupt handler for XSplitScreen, called on Frame Flyback
 InterruptHandler		PUSH BC
 						PUSH HL
 						PUSH DE
