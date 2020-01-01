@@ -38,12 +38,16 @@
 
             			define JIFFY					$FC9E ; The timer variable
 
+            			define MALUVA_REPORT_FLAG	27
+
 
 Start                   
                         DI
 ; ---- Preserve registers
                         PUSH    BC
                         PUSH    IX
+       					RES		7,(IX+MALUVA_REPORT_FLAG)	; Clear bit 7 of flag 28 (mark of EXTERN executed)
+
 
 
 ; --- Check function selected
@@ -61,9 +65,11 @@ Start
 						JP      Z, XPart
 						CP 		5
 						JP 		Z, XBeep
+	    				CP  7
+    					JP  Z, XUndone
 						CP 		255
 						JP 		Z, RestoreXMessage
-                        JP      cleanExit
+                        JP      ExitWithError
 
 ; ---- Set the filename
 loadImg                 LD      A, D
@@ -91,7 +97,7 @@ loadImg                 LD      A, D
                         LD      HL, ImageFilename                    
                         CALL    openFile                        ; Prepares the FCB and opens the file
                         OR      A                               ; On failure to open, exit
-                        JR      NZ, cleanExit
+                        JR      NZ, ExitWithError
 
 ; --- Patch FCB so record size for reading is 1, and define where to read to when reading
                         LD      DE, WorkBuffer
@@ -134,6 +140,41 @@ cleanExit               POP     IX
                         POP     BC
                         EI
                         RET
+
+
+; It happens the DAAD code sets the "done" status after the execution of an EXTERN, something which happens in a function called NXTOP, which does a few thing and then jumps to 
+; another function named CHECK. Due to that , it is not possible to exit an EXTERN without getting the done status set. To avoid that we are going to go through the DAAD interpreter
+; code to make what NXTOP does, and then jump to the JP CHECK at the end of that NXTOP function.
+
+cleanExitNotdone		POP 	IX			; Copied from Cleanexit, without the EI
+						POP 	BC
+						
+						POP 	HL			;This is the return address for Extern, there we should fin the "JP NXTOP" 
+						INC 	HL			;Now we are pointing to address where NXTOP is stored
+						LD 		E, (HL)
+						INC 	HL
+						LD 		D, (HL)		; Now DE contains NXTOP
+						INC 	DE
+						INC 	DE
+						INC 	DE
+						INC 	DE
+						INC 	DE
+						INC 	DE							; Inc six times to skip all code in NXTOP up to the JP CHECK
+						LD  	(PatchNXTOPJMP + 1), DE		; Now the code below is just like NXTOP function, but without the done status set, and plus EI
+
+FakeNXTOP				INC		BC			; This is the fake NXTOP code, with the JP at the end that jumps to the real JP CHECK
+						POP 	HL
+						EI					; EI is not in NXTOP but it was in Cleanexit
+PatchNXTOPJMP			JP		0			; This will be patched above
+
+
+ExitWithError			POP		IX											; Extract and push again real IX value from stack
+						PUSH 	IX		
+						SET 	7, (IX + MALUVA_REPORT_FLAG)				; Mark error has happened
+						LD 		A, (IX + MALUVA_REPORT_FLAG)				
+						AND 	1											; If bit 0 of flag 28 was set, then also exit extern without marking as DONE
+						JR 		NZ, cleanExitNotdone
+						JR 		cleanExit
 
 
 ; ******************* SAVE AND LOAD GAME ROUTINES   *************************************************
@@ -180,7 +221,7 @@ diskFailure             LD      A, 57                           ; E/S error sysm
                         CALL    DAAD_SYSMESS
                         POP     HL                              
                         LD      (HL),03                         ; and this restores POP HL
-                        JR      cleanExit                        
+                        JR      ExitWithError
 
 prepareSaveGame         LD      A, ($B001)
                         CP      $3A
@@ -319,6 +360,13 @@ createFile              CALL    prepareFCB
                         LD      DE, FCB
                         CALL    BDOS                  
                         RET
+
+
+XUndone			    	POP IX				; Make sure IX is correct
+				    	PUSH IX
+				    	RES		4, (IX-1)						
+				    	JP 		cleanExitNotdone
+
 
 ; XPart function
 XPart				    LD 		A, D
