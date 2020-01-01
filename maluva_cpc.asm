@@ -30,6 +30,7 @@
 						define VRAM_ADDR 				$C000 ; The video RAM address
 						define TIME						$B8B4 ; Auto-increment address
 						define CPC_DDB_BASE_ADDRESS 	$2880
+						define MALUVA_REPORT_FLAG		27
 
 						; For the interrupt handler
 						define NEW_FAST_TICKER			 $BCE0 
@@ -48,6 +49,9 @@ Start
 						DI
 						PUSH 	BC
 						PUSH 	IX
+						PUSH 	AF
+						RES		7,(IX+MALUVA_REPORT_FLAG)	; Clear bit 7 of flag 28 (mark of EXTERN executed)
+						POP 	AF
 
 						LD 		D, A		; Preserve first parameter
 						LD 		A, (BC)		; Get second parameter (function number) on A
@@ -61,10 +65,12 @@ Start
 						JP  	Z, XBeep
 						CP 		6
 						JP 		Z, XSplitScreen
+						CP 		7
+						JP 		Z, XDoneStatus
 						CP 		255
 						JP 		Z, RestoreXMessage
 						OR 		A
-						JP 		NZ, cleanExit
+						JP 		NZ, ExitWithError
 
 
 LoadPicture				
@@ -213,6 +219,47 @@ cleanExit2				EI
 						POP 	BC
 						RET
 
+; It happens the DAAD code sets the "done" status after the execution of an EXTERN, something which happens in a function called NXTOP, which does a few thing and then jumps to 
+; another function named CHECK. Due to that , it is not possible to exit an EXTERN without getting the done status set. To avoid that we are going to go through the DAAD interpreter
+; code to make what NXTOP does, and then jump to the JP CHECK at the end of that NXTOP function.
+
+cleanExitNotdone		LD 	A, $CF			; this four instructions are just a copy of Cleanexit code except the EI
+						LD 	(TXT_OUTPUT),A
+cleanExitNotdone2		POP 	IX
+						POP 	BC
+						
+						POP 	HL			;This is the return address for Extern, there we should fin the "JP NXTOP" 
+						INC 	HL			;Now we are pointing to address where NXTOP is stored
+						LD 		E, (HL)
+						INC 	HL
+						LD 		D, (HL)		; Now DE contains NXTOP
+						INC 	DE
+						INC 	DE
+						INC 	DE
+						INC 	DE
+						INC 	DE
+						INC 	DE							; Inc six times to skip all code in NXTOP up to the JP CHECK
+						LD  	(PatchNXTOPJMP + 1), DE		; Now the code below is just like NXTOP function, but without the done status set, and plus EI
+
+FakeNXTOP				INC		BC			; This is the fake NXTOP code, with the JP at the end that jumps to the real JP CHECK
+						POP 	HL
+						EI					; EI is not in NXTOP but it was in Cleanexit
+PatchNXTOPJMP			JP		0			; This will be patched above
+
+
+
+ExitWithError			SET 	7, (IX + MALUVA_REPORT_FLAG)				; Mark error has happened
+						LD 		A, (IX + MALUVA_REPORT_FLAG)				
+						AND 	1											; If bit 0 of flag 28 was set, then also exit extern without marking as DONE
+						JR 		NZ, cleanExitNotdone
+						JR 		cleanExit
+
+						
+ExitWithError2 			SET 	7, (IX + MALUVA_REPORT_FLAG)				; Mark error has happened
+						LD 		A, (IX + MALUVA_REPORT_FLAG)				
+						AND 	1											; If bit 0 of flag 28 was set, then also exit extern without marking as DONE
+						JR 		NZ, cleanExitNotdone2
+						JR 		cleanExit2
 
 
 ; Please notice parameter <mode> of XSPLITSCREEN doesn't directly match with video modes. For CPC it works like this:
@@ -254,6 +301,15 @@ XPart 					LD 		A, D
 						LD 		(XpartPart),A    ; If parameter != 0, then XPART equals 50 so files are in the range 50-81 instead of 0-31
 
 						JR 		cleanExit2
+
+
+; XDoneStatus changes DONE status
+
+XDoneStatus				LD 		A, D
+						OR 		A
+						JR 		NZ, cleanExit			; Nothing to do as DAAD defaults to DONE=1 when existing an EXTERN
+ClearDone				RES		4, (IX-1)						
+						JR 		cleanExitNotdone
 
 
 ; XBeep , beep replacement
@@ -397,8 +453,8 @@ XMessage				LD 		L, D   ; First parameter (LSB) to L
                         LD 	HL, XMESSFilename		; Points to file name
                         LD 	DE, BUFFER2K_ADDR	
                         CALL 	CAS_IN_OPEN		; Open file
-                        JP 	NC, cleanExit
-                        JP 	Z, cleanExit
+                        JP 	NC, ExitWithError2
+                        JP 	Z, ExitWithError
 
 ; ---- read the file
 						CALL 	CAS_IN_CHAR  ; Although this is supposed to read only one char, in fact it reads one char in A, and a whole 2K at the BUFFER2K_ADDR
@@ -521,7 +577,7 @@ BackupPalette			PUSH 	HL
 
 cleanExitRestorePal     LD HL, LastPaletteBuffer
 						CALL SetPalette
-						JP cleanExit
+						JP ExitWithError
 
 
 ; ** Forces another 2K buffer to be loaded from disk and sets back IXH and HL registers to control that buffer 
@@ -573,7 +629,7 @@ HideScreen				LD 	HL, PaletteBuffer
 						RET
 
 
-
+ErrorMode				DB 	0				; 0 = Report errors in flag 128, 1= Report Errors as DONE status
 Filename				DB 	"000.CPC"
 ScansPer2kBuffer		DB 	0
 AuxVar					DW 	0
