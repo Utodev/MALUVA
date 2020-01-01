@@ -313,8 +313,10 @@ XPart				LD 		A, D
 					LD      (XMESSFilename), A
 					JR 		cleanExit
 
-XUndone					RES		4, (IX-1)						
-						JR 		cleanExitNotdone
+XUndone				POP IX				; Make sure IX is correct
+					PUSH IX
+					RES		4, (IX-1)						
+					JR 		cleanExitNotdone
 
 
 XMessage			LD 		L, D ;  LSB at L
