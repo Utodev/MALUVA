@@ -49,10 +49,8 @@ Start
 						DI
 						PUSH 	BC
 						PUSH 	IX
-						PUSH 	AF
 						RES		7,(IX+MALUVA_REPORT_FLAG)	; Clear bit 7 of flag 28 (mark of EXTERN executed)
-						POP 	AF
-
+						
 						LD 		D, A		; Preserve first parameter
 						LD 		A, (BC)		; Get second parameter (function number) on A
 
@@ -248,18 +246,23 @@ PatchNXTOPJMP			JP		0			; This will be patched above
 
 
 
-ExitWithError			SET 	7, (IX + MALUVA_REPORT_FLAG)				; Mark error has happened
-						LD 		A, (IX + MALUVA_REPORT_FLAG)				
-						AND 	1											; If bit 0 of flag 28 was set, then also exit extern without marking as DONE
+ExitWithError			CALL ExitWithErrorCommon
 						JR 		NZ, cleanExitNotdone
 						JR 		cleanExit
 
 						
-ExitWithError2 			SET 	7, (IX + MALUVA_REPORT_FLAG)				; Mark error has happened
-						LD 		A, (IX + MALUVA_REPORT_FLAG)				
-						AND 	1											; If bit 0 of flag 28 was set, then also exit extern without marking as DONE
+ExitWithError2 			CALL ExitWithErrorCommon
 						JR 		NZ, cleanExitNotdone2
 						JR 		cleanExit2
+
+ExitWithErrorCommon		POP 	HL
+						POP		IX											; Extract and push again real IX value from stack
+						PUSH 	IX		
+						PUSH 	HL											; HL is poped and pushed cause it's the function return value 
+						SET 	7, (IX + MALUVA_REPORT_FLAG)				; Mark error has happened
+						LD 		A, (IX + MALUVA_REPORT_FLAG)				
+						AND 	1											; If bit 0 of flag 28 was set, then also exit extern without marking as DONE
+						RET
 
 
 ; Please notice parameter <mode> of XSPLITSCREEN doesn't directly match with video modes. For CPC it works like this:
