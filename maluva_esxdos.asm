@@ -81,6 +81,8 @@ Init				LD 	D, A		; Preserve first parameter
 					JP 	Z, XMessage
 					CP  4
 					JP  Z, XPart
+					CP  7
+					JP  Z, XUndone
 					JP 	ExitWithError
 ; ---- Set the filename
 LoadImg
@@ -311,6 +313,10 @@ XPart				LD 		A, D
 					LD      (XMESSFilename), A
 					JR 		cleanExit
 
+XUndone					RES		4, (IX-1)						
+						JR 		cleanExitNotdone
+
+
 XMessage			LD 		L, D ;  LSB at L
 					POP 	IX
 					POP 	BC
@@ -327,7 +333,7 @@ XMessage			LD 		L, D ;  LSB at L
 					LD   	IX, XMESSFilename
 					RST     $08
                     DB      F_OPEN      
-                    JR      C, ExitWithError
+                    JP      C, ExitWithError
 					LD 		(CloseFile+1),A ; Preserve file handle to be able to close it later
 					LD 		(XmessReadFile+1),A ; Preserve file handle to be able to read from it
 ; Seek file					
