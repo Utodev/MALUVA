@@ -56,6 +56,7 @@
 			define DAAD_PATCH_ES $707A		    ; Address where the interpreter sets the internal flag which makes the words be cutted when printed
 			define DAAD_PATCH_EN $701A			
 
+			define MALUVA_REPORT_FLAG	27
 
 ; ********************************************************************                        
 ;                                 MAIN
@@ -65,6 +66,8 @@ Start
 					DI
 					PUSH 	BC
 					PUSH 	IX
+					RES		7,(IX+MALUVA_REPORT_FLAG)	; Clear bit 7 of flag 28 (mark of EXTERN executed)
+
 
 ; ------ Detect if english or spanish interpreter
 					PUSH 	AF
@@ -93,7 +96,10 @@ Init				LD 	D, A		; Preserve first parameter
 					JP 	Z, XMessage
 					CP  4
 					JP  Z, XPart
-					JP 	cleanExit
+					CP  7
+					JP  Z, XUndone
+
+					JP 	ExitWithError
 ; ---- Set the filename
 LoadImg
 					LD 	A, D		; Restore first parameter
@@ -114,7 +120,7 @@ LoadImg
 
 ; --- Set default disk  
 					CALL 	setDefaultDisk
-                    JP      C, cleanExit
+                    JP      C, ExitWithError
 
 
 ; --- open file
@@ -126,7 +132,7 @@ LoadImg
 					XOR 	A
 					LD 		BC, LAYER2_ACCESS_PORT
 					OUT 	(C),A					 ; Disable layer 2
-					JP 		cleanExit
+					JP 		ExitWithError
 
 
 
@@ -224,17 +230,52 @@ drawEnd				NEXTREG REG_MMU7, 1				; Change MMU7 bank to to original one
 					LD 		A,  (FileHandle)
 					RST     $08
                     DB      F_CLOSE
-
 	
 cleanExit			EI
 					POP 	IX
 					POP 	BC
 					RET
 
+; It happens the DAAD code sets the "done" status after the execution of an EXTERN, something which happens in a function called NXTOP, which does a few thing and then jumps to 
+; another function named CHECK. Due to that , it is not possible to exit an EXTERN without getting the done status set. To avoid that we are going to go through the DAAD interpreter
+; code to make what NXTOP does, and then jump to the JP CHECK at the end of that NXTOP function.
+
+cleanExitNotdone		POP 	IX			; Copied from Cleanexit, without the EI
+						POP 	BC
+						
+						POP 	HL			;This is the return address for Extern, there we should fin the "JP NXTOP" 
+						INC 	HL			;Now we are pointing to address where NXTOP is stored
+						LD 		E, (HL)
+						INC 	HL
+						LD 		D, (HL)		; Now DE contains NXTOP
+						INC 	DE
+						INC 	DE
+						INC 	DE
+						INC 	DE
+						INC 	DE
+						INC 	DE							; Inc six times to skip all code in NXTOP up to the JP CHECK
+						LD  	(PatchNXTOPJMP + 1), DE		; Now the code below is just like NXTOP function, but without the done status set, and plus EI
+
+FakeNXTOP				INC		BC			; This is the fake NXTOP code, with the JP at the end that jumps to the real JP CHECK
+						POP 	HL
+						EI					; EI is not in NXTOP but it was in Cleanexit
+PatchNXTOPJMP			JP		0			; This will be patched above
+
+
+ExitWithError			POP		IX											; Extract and push again real IX value from stack
+						PUSH 	IX		
+						SET 	7, (IX + MALUVA_REPORT_FLAG)				; Mark error has happened
+						LD 		A, (IX + MALUVA_REPORT_FLAG)				
+						AND 	1											; If bit 0 of flag 28 was set, then also exit extern without marking as DONE
+						JR 		NZ, cleanExitNotdone
+						JR 		cleanExit
+
+
 
 ; Both read savegame and load savegame use the same code, that is just slightly modified before jumping in the common part at DoReadOrWrite
 
 LoadGame			LD  A, FA_READ
+		
 					LD	(OpenMode+1),A
 					LD  A, F_READ
 					LD 	(ReadWrite),A
@@ -282,12 +323,18 @@ CloseFile			LD 	A, $FF			; That $FF will be modifed by code above
 
 diskFailure			LD 	L, 57			; E/S error
 DAADSysmesCall		CALL    DAAD_SYSMESS_ES
-					JR 	cleanExit
+					JR 	ExitWithError
 
 XPart				LD 		A, D
 					ADD		'0'
 					LD      (XMESSFilename), A
 					JR 		cleanExit
+
+XUndone				POP IX				; Make sure IX is correct
+					PUSH IX
+					RES		4, (IX-1)						
+					JP 		cleanExitNotdone
+
 
 
 XMessage			LD 		L, D ;  LSB at L
@@ -306,7 +353,7 @@ XMessage			LD 		L, D ;  LSB at L
 					LD   	IX, XMESSFilename
 					RST     $08
                     DB      F_OPEN      
-                    JR      C, cleanExit
+                    JP      C, ExitWithError
 					LD 		(CloseFile+1),A ; Preserve file handle to be able to close it later
 					LD 		(XmessReadFile+1),A ; Preserve file handle to be able to read from it
 ; Seek file					
