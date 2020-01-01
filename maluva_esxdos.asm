@@ -42,7 +42,7 @@
 			define DAAD_PATCH_ES $707A		    ; Address where the interpreter sets the internal flag which makes the words be cutted when printed
 			define DAAD_PATCH_EN $701A	
 
-			define MALUVA_REPORT_FLAG	27
+			define MALUVA_REPORT_FLAG	20
 		
 
 
@@ -316,7 +316,7 @@ XPart				LD 		A, D
 XUndone				POP IX				; Make sure IX is correct
 					PUSH IX
 					RES		4, (IX-1)						
-					JR 		cleanExitNotdone
+					JP 		cleanExitNotdone
 
 
 XMessage			LD 		L, D ;  LSB at L

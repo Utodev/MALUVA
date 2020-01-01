@@ -38,7 +38,7 @@
 
             			define JIFFY					$FC9E ; The timer variable
 
-            			define MALUVA_REPORT_FLAG	27
+            			define MALUVA_REPORT_FLAG	20
 
 
 Start                   

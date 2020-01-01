@@ -30,7 +30,7 @@
 						define VRAM_ADDR 				$C000 ; The video RAM address
 						define TIME						$B8B4 ; Auto-increment address
 						define CPC_DDB_BASE_ADDRESS 	$2880
-						define MALUVA_REPORT_FLAG		27
+						define MALUVA_REPORT_FLAG		20
 
 						; For the interrupt handler
 						define NEW_FAST_TICKER			 $BCE0 
