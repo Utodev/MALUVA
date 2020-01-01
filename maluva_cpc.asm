@@ -64,7 +64,7 @@ Start
 						CP 		6
 						JP 		Z, XSplitScreen
 						CP 		7
-						JP 		Z, XDoneStatus
+						JP 		Z, XUndone
 						CP 		255
 						JP 		Z, RestoreXMessage
 						OR 		A
@@ -306,12 +306,9 @@ XPart 					LD 		A, D
 						JR 		cleanExit2
 
 
-; XDoneStatus changes DONE status
+; XUndone changes DONE status
 
-XDoneStatus				LD 		A, D
-						OR 		A
-						JR 		NZ, cleanExit			; Nothing to do as DAAD defaults to DONE=1 when existing an EXTERN
-ClearDone				RES		4, (IX-1)						
+XUndone					RES		4, (IX-1)						
 						JR 		cleanExitNotdone
 
 
