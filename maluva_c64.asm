@@ -17,6 +17,7 @@
 			
 					PTR              	= $02
 					DRVNUM           	= $BA
+					LOGICAL_FILE		= $02
 					KERNAL_SETLFS    	= $FFBA
 					KERNAL_SETNAM    	= $FFBD 
 					KERNAL_OPEN      	= $FFC0
@@ -31,17 +32,27 @@
 					COLOR_RAM   		= $D800			; This doesn't ever move
 					BG_COLOR 			= $D021
 					GRAPH_MODE			= $D011
-					BITMAP_MODE			=$D016
+					BITMAP_MODE			= $D016
 
 					DDB_ADDRESS 		= $3880			; DAAD DDB load address
+
+					FLAG				= $02A7 		; DAAD misc variables area
+					DONEI				= FLAG+5
+
+					USER				= DDB_ADDRESS - 514; Location of the flags
+					MALUVA_REPORT_FLAG = 20
+
 
 ; 					DAAD seems to simulate some Z80 REGS with 0-page addresses
 					BC			      	= 253
 					B       			= 254
 					C			       	= 253
-					HL     				= 6 ; it was 251
-					H      				= 7 ; it was 252
-					L      				= 6 ; it was 251
+					HL     				= 251
+					H      				= 252
+					L      				= 251
+					DE      			= 139
+					E      				= 139
+					D      				= 140
 
 ; 					Other Page0 addresses usable for a while
 
@@ -58,6 +69,11 @@
 Start				PHP							; Save status register
 					SEI 						; Disable interrupt
 					STA     Registro1
+
+					LDA 	USER+MALUVA_REPORT_FLAG		; Clear Maluva Report flag bit 7
+					AND     #$7F
+					STA 	USER+MALUVA_REPORT_FLAG
+
 					TYA
 					LDX     Registro1            ; Now X has first parameter, and A has second (function number)
 					CMP 	#0
@@ -66,12 +82,13 @@ Start				PHP							; Save status register
 					BEQ     XPart
 					CMP 	#6
 					BEQ 	XSplitScr
+					CMP 	#7
+					BEQ 	XUndone
 					CMP		#255
 					BEQ 	restoreXmessage
 					CMP 	#3
-					BEQ 	+
-					JMP		CleanExit
-+					JMP 	Xmessage				
+					BEQ 	Xmessage
+					JMP		ExitWithError
 					
 
 ; ---- Set the filename
@@ -102,15 +119,17 @@ LoadImg				JSR 	HideScreen
 
 					LDA 	#$4C				; JMP opcode
 					STA 	PatchJMP			; Make sure instruction at PatchBMP is JMP Eof so SCREEN area is not loaded
+					LDA     #0
 					JSR 	KERNAL_CHRIN		; Read number of attribute lines
-					AND 	#$FF 				; Just to update flags
+Debug2				AND 	#$FF 				; Just to update flags
 					BNE     IsHiRes	   			; If number of attributes != 0, is a HiRes picture
 					LDA 	#$2C
 					STA 	PatchJMP			; Make sure instruction at PatchBMP is BIT Eof, so SCREEN area is loaded
 					JSR 	KERNAL_CHRIN		; Read number of attribute lines again, as first byte was just a flag
 IsHiRes				STA 	Registro1			; Save number of attr lines
+					BEQ		ExitWithError		; If number of lines is a 0, then it fails
 					JSR 	KERNAL_READST		; Read file status
-        			BNE 	Eof      			; either EOF or read error, leave
+        			BNE 	ExitWithError		; either EOF or read error, leave
 					LDA 	Registro1
 					PHA
 
@@ -159,7 +178,7 @@ LoadAttrs			LDA #<SCREEN_RAM
 			 		LDA #>SCREEN_RAM
         			STA PTR+1
 					JSR ReadCompressedBlock
-PatchJMP			JMP Eof						; May be replaced by BIT Eof if image is Multicolor
+PatchJMP			JMP Cleanexit						; May be replaced by BIT Cleanexit if image is Multicolor
 
 LoadScreen			LDA #<COLOR_RAM
 					STA PTR
@@ -172,18 +191,98 @@ LoadBGColor			JSR	KERNAL_CHRIN
 
 					
 
-Eof        			LDA #$02
+CleanExit  			LDA #LOGICAL_FILE		; We may reach this point without a file open, but it's easier - and globally compact - to try to close everytime
         			JSR KERNAL_CLOSE  		; close file
-        			JSR KERNAL_CLRCHN 		; restore input to default channel (keyboard)
 
-CleanExit			LDA ActiveIntHandler	; if int handler active, restart the process to set blaster interrupt
+					JSR KERNAL_CLRCHN
+					LDA ActiveIntHandler	; if int handler active, restart the process to set blaster interrupt
 					BEQ CleanExit2
 					JSR RestoreRasterInt
 
-CleanExit2			JSR 	ShowScreen
+CleanExit2			JSR ShowScreen
 					PLP						; Restore status register (and previous interrupt status as interrupt status is a flag just like Z or C)
 					CLI
 					RTS
+
+
+cleanExitNotdone	LDA #LOGICAL_FILE		; We may reach this point without a file open, but it's easier - and globally compact - to try to close everytime
+        			JSR KERNAL_CLOSE  		; close file
+
+					JSR KERNAL_CLRCHN
+					LDA ActiveIntHandler	; if int handler active, restart the process to set blaster interrupt
+					BEQ CleanExitNotDone2
+					JSR RestoreRasterInt
+
+CleanExitNotDone2	JSR 	ShowScreen		; Code from normal CleanExit except CLI
+					PLP						
+
+					PLA 				; Get LSB of return address
+					STA E
+					PLA 
+					STA D
+					JSR IncDE			; First we increase return address by one cause JSR does not stack the return address, but return address-1 (RTS is the one that increases the value)
+					JSR IncDE			; The we increment once more to step over the JMP opcode and point to where NXTOP is actually stored in RAM
+					LDY #0
+					LDA (DE), Y
+					STA L
+					JSR IncDE
+					LDA (DE), Y
+					STA H
+					JSR IncHL
+					JSR IncHL
+					JSR IncHL
+					JSR IncHL
+					JSR IncHL
+					JSR IncHL
+					JSR IncHL
+					JSR IncHL
+					JSR IncHL
+					JSR IncHL
+					JSR IncHL
+					JSR IncHL
+					JSR IncHL
+					JSR IncHL			; Inc HL +14 to point to specific JMP CHECK
+					LDA L
+					STA PatchNXTOPJMP+1
+					LDA H
+					STA PatchNXTOPJMP+2
+
+
+FakeNXTOP			JSR IncBC
+					PLA 
+					STA L
+					PLA
+					STA H
+					CLI					; EI is not in NXTOP but it was in Cleanexit
+PatchNXTOPJMP		JMP		0			; This will be patched above
+
+
+; Useful functions
+IncHL   			INC     L
+        			BNE     +
+        			INC     H
++			        RTS
+
+IncBC   			INC     C
+        			BNE     +
+        			INC     B
++			        RTS
+
+
+IncDE   			INC     E
+        			BNE     +
+        			INC     D
++			        RTS
+
+ExitWithError			LDA 	USER+MALUVA_REPORT_FLAG			; Sets bit 7 of Maluva report flag
+						ORA     #$80
+						STA 	USER+MALUVA_REPORT_FLAG
+						AND 	#1								; checks if Maluva report flag first bit is 1
+						BNE 	cleanExitNotdone 				; if so, exits without setting done status
+						JMP		cleanExit
+
+						
+
 
 
 ; ----------------------------- Xpart --- Handles wich part (part 1 or part 2 of the game is being played)
@@ -193,6 +292,10 @@ XPart 				TXA
 					LDA #50
 +					STA XPartPart
 					JMP CleanExit
+
+XUndone				LDA #0
+					STA DONEI
+					JMP cleanExitNotdone
 
 
 XSplitScr			TXA
@@ -210,7 +313,6 @@ SetNewIntHandler	LDA <#IntHandler		; Set new pointer
 					STA CINV+1
 					LDA #1
 					STA ActiveIntHandler ; Maluva Int Handler Active
-					JSR RestoreRasterInt ; Force first raster int, in case it's inactive
 					JMP CleanExit
 
 SetOldHandler		LDA ActiveIntHandler 
@@ -241,7 +343,6 @@ SetOldHandler		LDA ActiveIntHandler
 											;Bit 5 - Cassette Motor Control; 0 = On, 1 = Off
 											;Bit 6 - Undefined
 											;Bit 7 - Undefined
-					FLAG    =   $02A7       ;Misc variables area
 
 					IFLAGS  = 	$02DD      	;Interupt mode flags
                                 			;Bit 7 - Kernal Out (1=Kernal Out, 0 = Kernal In)
@@ -438,35 +539,21 @@ FakeCondacts		.byte 	$36, 0,	$3D, 0, $FF ; SYSMESS 0 EXTERN 0 255
 
 
 
-; Opens file whose name it's at X-Y and length at A				
+; Opens file whose name it's at X-Y and filename length at A				
 
-OpenFile			STY RegistroY
-					STX RegistroX
-					PHA
+OpenFile			JSR KERNAL_SETNAM
 
-					LDA #0
-					STA SecondaryAddress+1  ; SETLFS for open
-					PLA
-					LDX RegistroX
-					LDY RegistroY
-		 			JSR KERNAL_SETNAM
-        			LDA #$02				; Logical number
+        			LDA #LOGICAL_FILE		; Logical number
 					LDX DRVNUM       		; last used device number
         			BNE SecondaryAddress
         			LDX #$08      			; default to device 8
-SecondaryAddress	LDY #$00      			; not $01 means: load to address stored in file
+SecondaryAddress	LDY #LOGICAL_FILE		
         			JSR KERNAL_SETLFS
 					JSR KERNAL_OPEN 		; open file
-        			BCC +
-					PLA						; Just to clear stack return value
-					JMP CleanExit
-+					LDX #$02				; Use file #2 for input/output
+					LDX #$02				; Use file #2 for input/output
         			JSR KERNAL_CHKIN		; Set input to file
 					JSR KERNAL_READST
-        			BNE OpenFileError		; either EOF or read error
 					RTS
-OpenFileError		PLA						; Just to clear stack return value
-					JMP Eof					
 
 ; Clears Mem at ($AE), as many bytes as the value received in X multuplied by 40, and filling with the value at Y
 ClearMem			STY ClearValue+1
@@ -489,18 +576,18 @@ ClrDoNotIncMSBAttr  DEC Registro1
 
 ; Reads RLE compressed data from disk and stores it at ($AE) until a given value with zero repeats appears
 ReadCompressedBlock JSR KERNAL_READST
-        			BNE Eof      			; either EOF or read error
+        			BNE ExitWithError		; either EOF or read error
 					JSR KERNAL_CHRIN		; Read repeat value
 					STA CompressedCMP+1     ; Save repeat Value self-modifying the code
 
 
 CompressedLoop		JSR KERNAL_READST		; Read file status
-        			BNE Eof      			; either EOF or read error, leave
+        			BNE ExitWithError		; either EOF or read error, leave
 					JSR KERNAL_CHRIN    	; Read value
 CompressedCMP		CMP #0					; This #0 value is replaced above with the "repeat follows" byte. If found two bytes follow (repeats, value)
 					BNE CompressNoRep
 					JSR KERNAL_READST		; Read file status
-        			BNE Eof      			; either EOF or read error, leave
+        			BNE ExitWithError		; either EOF or read error, leave
 					JSR KERNAL_CHRIN    	; Read number of repeats
 					CMP #0        			; if zero repeats, it's end of block
 					BNE CompresRep
@@ -508,7 +595,7 @@ CompressedCMP		CMP #0					; This #0 value is replaced above with the "repeat fol
 
 CompresRep          STA Registro1           ; Preserve repeats
 					JSR KERNAL_READST		; Read file status
-        			BNE Eof      			; either EOF or read error, leave
+        			BNE ExitWithError		; either EOF or read error, leave
 					JSR KERNAL_CHRIN    	; Read value to repeat
 					LDX Registro1           ; Restore number of repeats
 					JMP RepeatLoop
@@ -561,7 +648,7 @@ XMessage			JSR HideScreen
 					BNE +
 					INC B   	; Increase BC, which DAAD uses as PC counter
 +					LDY #0
-					LDA (BC), Y   ; Load byte pointed by BC (as X=0)
+					LDA (BC), Y   ; Load byte pointed by BC (as Y=0)
 					STA H					
 					LSR	
 					LSR	
@@ -593,6 +680,8 @@ XMessage			JSR HideScreen
 					LDA H          			; HL now has the real offset within the file, but with MSB (H) increased by 1, which will make the DEC H down here end loop on first decrement
 					INC H					; otherwise, first decrement would turn H int $FF, not zero 
 -					JSR KERNAL_CHRIN		
+					JSR KERNAL_READST
+					BNE ExitWithError
 					DEC L
 					BNE -
 					DEC H
@@ -605,8 +694,12 @@ ReadMsg				LDA <#XmessageBuffer   ; LSB of XMessageBuffer
 					STA H
 					LDY #0
 
-ReadMsgLoop			JSR KERNAL_CHRIN		; Read number of attribute lines
-					TAX
+ReadMsgLoop			JSR KERNAL_CHRIN	
+					TAX	
+					JSR KERNAL_READST
+					AND $BF					; EOF is not an error, so we turn off that bit if on
+					BNE ExitWithError
+					TXA
 					EOR #$FF
 					CMP #10					; End of message mark
 					BEQ TextLoaded
@@ -630,7 +723,7 @@ XmessPrintMsg		JSR 	preserveBC
 					STA 	C
 					LDA	 	>#FakeCondacts-1
 					STA 	B
-					JMP Eof
+					JMP 	CleanExit
 
 ; ------------------------------- Variables and tables  -----------------
 
