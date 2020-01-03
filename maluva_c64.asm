@@ -121,7 +121,7 @@ LoadImg				JSR 	HideScreen
 					STA 	PatchJMP			; Make sure instruction at PatchBMP is JMP Eof so SCREEN area is not loaded
 					LDA     #0
 					JSR 	KERNAL_CHRIN		; Read number of attribute lines
-Debug2				AND 	#$FF 				; Just to update flags
+					AND 	#$FF 				; Just to update flags
 					BNE     IsHiRes	   			; If number of attributes != 0, is a HiRes picture
 					LDA 	#$2C
 					STA 	PatchJMP			; Make sure instruction at PatchBMP is BIT Eof, so SCREEN area is loaded
@@ -228,20 +228,10 @@ CleanExitNotDone2	JSR 	ShowScreen		; Code from normal CleanExit except CLI
 					JSR IncDE
 					LDA (DE), Y
 					STA H
-					JSR IncHL
-					JSR IncHL
-					JSR IncHL
-					JSR IncHL
-					JSR IncHL
-					JSR IncHL
-					JSR IncHL
-					JSR IncHL
-					JSR IncHL
-					JSR IncHL
-					JSR IncHL
-					JSR IncHL
-					JSR IncHL
-					JSR IncHL			; Inc HL +14 to point to specific JMP CHECK
+					LDY #14
+-					JSR IncHL   ; HL=HL+14 (skip all NXTOP code)
+					DEY
+					BNE -
 					LDA L
 					STA PatchNXTOPJMP+1
 					LDA H
@@ -542,7 +532,6 @@ FakeCondacts		.byte 	$36, 0,	$3D, 0, $FF ; SYSMESS 0 EXTERN 0 255
 ; Opens file whose name it's at X-Y and filename length at A				
 
 OpenFile			JSR KERNAL_SETNAM
-
         			LDA #LOGICAL_FILE		; Logical number
 					LDX DRVNUM       		; last used device number
         			BNE SecondaryAddress
@@ -550,7 +539,7 @@ OpenFile			JSR KERNAL_SETNAM
 SecondaryAddress	LDY #LOGICAL_FILE		
         			JSR KERNAL_SETLFS
 					JSR KERNAL_OPEN 		; open file
-					LDX #$02				; Use file #2 for input/output
+					LDX #LOGICAL_FILE		; Use file #2 for input/output
         			JSR KERNAL_CHKIN		; Set input to file
 					JSR KERNAL_READST
 					RTS
