@@ -7,8 +7,8 @@
 
 ; Please notice this is my first ever code using the 65xx assembler. I have no previous experience so I haven't worked too much in optimization
 
-; ORG $38BC
-*       = $38BC
+; ORG $70BC
+*       = $70BC
 
 ; ********************************************************************                        
 ;                           CONSTANTS 
@@ -28,14 +28,15 @@
 					KERNAL_CHRIN     	= $FFCF
 					KERNAL_READST	 	= $FFB7     
 
-					PIXELS_RAM  		= $E000
-					PLUS4_ATTRS_RAM   	= $DC00
+					BITMAP_RAM  		= $2000
+					SCREEN_RAM			= $0800
+					COLOR_RAM   		= SCREEN_RAM + 1024
 
 					PLUS4_PAGE_ROM  	= $FF3E 		; Store anything in this address to page in ROM
 					PLUS4_PAGE_RAM  	= $FF3F 		; Store anything in this address to page in RAM
 					PLUS4_SCREEN_CTR	= $FF06			; Bitwise register control several things in the screen
 
-					DDB_ADDRESS 		= $3880			; DAAD DDB load address
+					DDB_ADDRESS 		= $7080			; DAAD DDB load address
 
 					FLAG				= $02A7 		; DAAD misc variables area
 					DONEI				= FLAG+5
@@ -110,6 +111,9 @@ LoadImg				TXA							; Move first parameter (image number) to A
 					ADC 	#'0'				; inc to ascii equivalence
 					STA     Filename+1
 
+					;LDA #$0b					; Disable screen
+        			;STA PLUS4_SCREEN_CTR	 
+
         			LDX 	#<Filename
         			LDY 	#>Filename
 					LDA     #5
@@ -123,14 +127,14 @@ ReadFile			JSR KERNAL_CHRIN				; Read number of attribute lines
 					PHA
 
 ; Clear the screen
-ClearAttr1          LDA #<PLUS4_ATTRS_RAM
+ClearAttr1          LDA #<COLOR_RAM
         			STA PTR
-        			LDA #>PLUS4_ATTRS_RAM
+        			LDA #>COLOR_RAM
 					STA PTR+1
 					PLA						; Restore number of attr  lines
 					PHA 					; And save it again
         			TAX						; and move to X
-					LDY #$00				; Fill with 00 color
+					LDY #$0b				; Fill with 0b color
 					JSR ClearMem
 
 ClearPixels         PLA						; Restore number of attr  lines
@@ -139,16 +143,16 @@ ClearPixels         PLA						; Restore number of attr  lines
 					ASL
 					ASL						; multiply by 8 to get the real number of lines
 					TAX                     ; Move number of lines to X
-					LDA #<PIXELS_RAM
+					LDA #<BITMAP_RAM
         			STA PTR
-        			LDA #>PIXELS_RAM
+        			LDA #>BITMAP_RAM
         			STA PTR+1
 					LDY #0					; fill with $00
 					JSR ClearMem
 
-ClearAttr2          LDA #<PLUS4_ATTRS_RAM
+ClearAttr2          LDA #<COLOR_RAM
         			STA PTR
-        			LDA #>PLUS4_ATTRS_RAM
+        			LDA #>COLOR_RAM
 					STA PTR+1
 					PLA						; Restore number of attr  lines
 					STA PTR2			    ; and save it for plus/4
@@ -157,15 +161,15 @@ ClearAttr2          LDA #<PLUS4_ATTRS_RAM
 					JSR ClearMem
 
 
-LoadPixels			LDA #<PIXELS_RAM
+LoadPixels			LDA #<BITMAP_RAM
         			STA PTR
-        			LDA #>PIXELS_RAM
+        			LDA #>BITMAP_RAM
         			STA PTR+1
 					JSR ReadCompressedBlock
 
-LoadAttrs			LDA #<PLUS4_ATTRS_RAM
+LoadAttrs			LDA #<COLOR_RAM
 					STA PTR
-             		LDA #>PLUS4_ATTRS_RAM
+             		LDA #>COLOR_RAM
         			STA PTR+1
 					JSR ReadCompressedBlock
 
@@ -330,8 +334,6 @@ FakeCondacts		.byte 	$36, 0,	$3D, 0, $FF ; SYSMESS 0 EXTERN 0 255
 OpenFile			STY RegistroY
 					STX RegistroX
 					PHA
-        			LDA #$0b
-        			STA PLUS4_SCREEN_CTR	 
         			STA PLUS4_PAGE_ROM       
 					LDA #0
 					STA SecondaryAddress+1  ; SETLFS for open
@@ -439,10 +441,10 @@ DivideL2			ROL Registro2
 
 ConvertColors		LDA PTR2
 					STA Registro1
-					LDA #<PLUS4_ATTRS_RAM
+					LDA #<COLOR_RAM
 					STA PTR
 					STA PTR2
-					LDA #>PLUS4_ATTRS_RAM
+					LDA #>COLOR_RAM
 					STA PTR+1
 					AND #$F8
 					STA PTR2+1
