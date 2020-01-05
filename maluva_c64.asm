@@ -430,19 +430,19 @@ SetRasterInterrupt	STA     RASTER_COMPARE         ;LSB of raster compare
 
                
 
-SetGRMulticolor	    LDA GRAPH_MODE
-					AND #$BF
-					ORA #$20
-					STA GRAPH_MODE
+SetGRMulticolor	    ;LDA GRAPH_MODE
+					;AND #$BF
+					;ORA #$20
+					;STA GRAPH_MODE
 					LDA BITMAP_MODE
 					ORA #$10
 					STA BITMAP_MODE
 					RTS
 
-SetGRHiResolution   LDA GRAPH_MODE
-					AND #$BF
-					ORA #$20
-					STA GRAPH_MODE
+SetGRHiResolution   ;LDA GRAPH_MODE
+					;AND #$BF
+					;ORA #$20
+					;STA GRAPH_MODE
 					LDA BITMAP_MODE
 					AND #$EF
 					STA BITMAP_MODE
