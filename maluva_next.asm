@@ -2,7 +2,7 @@
 ; LGPL License applies, see LICENSE file
 ; TO BE COMPILED WITH SJASMPLUS
 ; Thanks to Boriel for his 8 bits division code in ZX-Basic, DivByTen function is based on his code
-; Thanks to Ped7g, Alcoholics Anonymous and  SevenFFF for their help in the Spectrum Next forum
+; Thanks to Ped7g, Alcoholics Anonymous and SevenFFF for their help in the Spectrum Next forum
 
 			ORG $843C
             OUTPUT  MLV_NEXT.BIN
@@ -98,6 +98,10 @@ Init				LD 	D, A		; Preserve first parameter
 					JP  Z, XPart
 					CP  7
 					JP  Z, XUndone
+					CP 	8
+					JP 	Z, XDisableLayer2
+					CP  9
+					JP 	Z, XNextCleanUpAndReset
 
 					JP 	ExitWithError
 ; ---- Set the filename
@@ -270,6 +274,20 @@ ExitWithError			POP		IX											; Extract and push again real IX value from st
 						JR 		NZ, cleanExitNotdone
 						JR 		cleanExit
 
+DisableLayer2			NEXTREG REG_CLIP_WINDOW_CTRL, 1   	; reset Layer2 clip window index (to X1)
+        				NEXTREG REG_CLIP_LAYER2, 0  	    ; clip.layer2.x1 = 0
+        				NEXTREG REG_CLIP_LAYER2, 0    	; clip.layer2.x2 = 255
+        				NEXTREG REG_CLIP_LAYER2, 0	    	; clip.layer2.y1 = (IMGNumLine)
+        				NEXTREG REG_CLIP_LAYER2, 0      	; clip.layer2.y2 = (IMGNumLine)
+						RET						
+
+XDisableLayer2			CALL DisableLayer2
+						JP cleanExit
+
+XNextCleanUpAndReset	CALL DisableLayer2
+						RST 0				
+
+
 
 
 ; Both read savegame and load savegame use the same code, that is just slightly modified before jumping in the common part at DoReadOrWrite
@@ -319,7 +337,7 @@ CloseFile			LD 	A, $FF			; That $FF will be modifed by code above
                     DB      F_CLOSE
 
 
-					JR 	cleanExit	
+					JP 	cleanExit	
 
 diskFailure			LD 	L, 57			; E/S error
 DAADSysmesCall		CALL    DAAD_SYSMESS_ES
@@ -328,7 +346,7 @@ DAADSysmesCall		CALL    DAAD_SYSMESS_ES
 XPart				LD 		A, D
 					ADD		'0'
 					LD      (XMESSFilename), A
-					JR 		cleanExit
+					JP 		cleanExit
 
 XUndone				POP IX				; Make sure IX is correct
 					PUSH IX
