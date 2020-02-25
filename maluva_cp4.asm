@@ -87,8 +87,6 @@ Start				PHP							; Save status register
 					BEQ 	Xmessage
 					CMP 	#4
 					BEQ     XPart
-					CMP 	#6
-					BEQ 	XSplitScr
 					CMP 	#7
 					BEQ     XUndone
 					CMP		#255
@@ -125,28 +123,14 @@ LoadImg				TXA							; Move first parameter (image number) to A
 					JSR 	OpenFile
 
 ReadFile			JSR 	KERNAL_CHRIN				; Read number of attribute lines
-					AND 	#$FF		 				; Just to update flags
-					BNE 	IsHiRes
-					JSR 	KERNAL_CHRIN				; Read number of attribute lines
-					
 
-isHiRes				STA 	Registro1					; Save number of attr lines
+      				STA 	Registro1					; Save number of attr lines
 					JSR 	KERNAL_READST				; Read file status
         			BNE 	ExitWithError				; either EOF or read error, leave and don't close cause it was likely not opened
 					LDA 	Registro1
 					PHA
 
 ; Clear the screen
-ClearAttr1          LDA #<COLOR_RAM
-        			STA PTR
-        			LDA #>COLOR_RAM
-					STA PTR+1
-					PLA						; Restore number of attr  lines
-					PHA 					; And save it again
-        			TAX						; and move to X
-					LDY #$0b				; Fill with 0b color
-					JSR ClearMem
-
 ClearPixels         PLA						; Restore number of attr  lines
 					PHA						; and save it again
 					ASL
@@ -160,14 +144,24 @@ ClearPixels         PLA						; Restore number of attr  lines
 					LDY #0					; fill with $00
 					JSR ClearMem
 
-ClearAttr2          LDA #<COLOR_RAM
+ClearAttr1          LDA #<SCREEN_RAM		; Luminance area
+        			STA PTR
+        			LDA #>SCREEN_RAM
+					STA PTR+1
+					PLA						; Restore number of attr  lines
+					PHA 					; And save it again
+        			TAX						; and move to X
+					LDY #$44				; Fill with 00 luminance (medium ink, medium paper)
+					JSR ClearMem
+
+ClearAttr2          LDA #<COLOR_RAM			; Color area
         			STA PTR
         			LDA #>COLOR_RAM
 					STA PTR+1
 					PLA						; Restore number of attr  lines
 					STA PTR2			    ; and save it for plus/4
         			TAX						; and move to X
-					LDY #$B0				; Fill with B0 color
+					LDY #$10				; Fill with B0 color
 					JSR ClearMem
 
 
@@ -177,24 +171,21 @@ LoadPixels			LDA #<BITMAP_RAM
         			STA PTR+1
 					JSR ReadCompressedBlock
 
-LoadLuminance		LDA #<SCREEN_RAM
-					STA PTR
-             		LDA #>SCREEN_RAM
-        			STA PTR+1
-					JSR ReadCompressedBlock
-
 LoadColors			LDA #<COLOR_RAM
 					STA PTR
-			 		LDA #>COLOR_RAM
+             		LDA #>COLOR_RAM
+        			STA PTR+1
+					JSR ReadCompressedBlock
+
+LoadLuminance		LDA #<SCREEN_RAM
+					STA PTR
+			 		LDA #>SCREEN_RAM
         			STA PTR+1
 					JSR ReadCompressedBlock
 
 
-;LoadMulti2			JSR	KERNAL_CHRIN
-;					STA MULTI2_COLOR
-
-;LoadBGColor		JSR	KERNAL_CHRIN
-;					STA BG_COLOR
+LoadBGColor			JSR	KERNAL_CHRIN
+					STA BG_COLOR
 
 
 ;--- And close file					
@@ -291,40 +282,6 @@ XPart 				TXA
 					LDA #50
 					STA XPartPart
 					JMP CleanExit
-
-; ------------- Xsplitscr
-
-XSplitScr			TXA
-					BEQ SetOldHandler		; If parameter= 0, standard DAAD mode
-
-SetNewHandler		LDA ActiveIntHandler
-					BNE SetNewIntHandler	; If already active we just restore everything but we don't preserve the old pointer
-					LDA CINV
-					STA OldIntHandler
-					LDA CINV+1
-					STA OldIntHandler + 1
-SetNewIntHandler	LDA <#IntHandler		; Set new pointer
-					STA CINV
-					LDA >#IntHandler
-					STA CINV+1
-					LDA #1
-					STA ActiveIntHandler ; Maluva Int Handler Active
-					LDA IFLAGS
-					AND $BF
-;					STA IFLAGS			; Clear bits 5 and 6
-					LDA #TOP_RASTER_LINE
-					JSR SetRasterInterrupt
-					JMP CleanExit
-
-SetOldHandler		LDA ActiveIntHandler 
-					BEQ +					; If Handler is not active we don't deactivate
-					LDA OldIntHandler
-					STA CINV
-					LDA OldIntHandler+1
-					STA CINV+1
-					LDA #0
-					STA ActiveIntHandler ; Set as deactivated
-+					JMP CleanExit					
 
 
 
@@ -582,192 +539,6 @@ XmessPrintMsg		JSR 	preserveBC
 
 
 
-; --------------------------- Interrupt ---------------------------
- ; This code  basically replaces the DAAD interpreter interrupt code. Instead of patching it on the fly, and to avoid 
- ; issues 
-
-					CINV    =   $0314       ; C64 Hardware Interrupt Vector
-					MOSIO   =   1           ;System memory organization  ESTO NO VALE PAREA PLUS/4
-											;Bit 0 - LORAM: Configures RAM or ROM at $A000-$BFFF (see bankswitching)
-											;Bit 1 - HIRAM: Configures RAM or ROM at $E000-$FFFF (see bankswitching)
-											;Bit 2 - CHAREN: Configures I/O or ROM at $D000-$DFFF (see bankswitching)
-											;Bit 3 - Cassette Data Output Line (Datasette)
-											;Bit 4 - Cassette Switch Sense; 1 = Switch Closed
-											;Bit 5 - Cassette Motor Control; 0 = On, 1 = Off
-											;Bit 6 - Undefined
-											;Bit 7 - Undefined
-
-					IFLAGS  = 	FLAG+54     ;Interupt mode flags
-                                			;Bit 7 - Kernal Out (1=Kernal Out, 0 = Kernal In)
-                                			;Bit 6-5 scanline chosen flag 00 -> Waiting for top scanline, 10 ---> Waiting for middle scanline, 11 --> Waiting gor bottom scanline
-
-					OLDIRQ  =   FLAG+55     ; Place where DAAD has preserved old IRQ Handler
-					FRAMES  = 	FLAG+57	   	 
-					RASFLG	= 	FLAG+59     ; Allows screen sync to raster point.
-
-					RASTER_COMPARE = $FF0B
-					INT_ENABLE_REGISTER  = $FF0A
-
-					TOP_RASTER_LINE = $00;
-					MIDDLE_RASTER_LINE = 105
-					BOTTOM_RASTER_LINE = 210;
-
-IntHandler			BIT     IFLAGS          ;Get status
-        			BVS     NIRQ2           ;.. waiting for screen break
-
-        			INC     FRAMES
-        			LDA     FRAMES          ;This counts 20m/s (1/50 sec!)
-        			CMP     #64
-        			BNE     NIRQ1C
-        			INC     FRAMES+1        ;This counts 64*20m/s!
-        			LDA     #0
-        			STA     FRAMES
-
-NIRQ1C  			LDA     IFLAGS
-        			ORA     #$40	      ;wait for SC_BRK
-        			STA     IFLAGS
-					LDA		#105
-					;	ADD	#49
-        			JSR     SETRAS
-					JSR SetGRMulticolor
-
-					;JSR	INTVEC
-
-					BIT		IFLAGS		;See if Kernal available
-        			BMI     NIRQ3
-
-        			JMP     (OLDIRQ)        ;service ROM IRQ
-
-			NIRQ2   JSR 		SetGRHiResolution
-
-					LDA     IFLAGS
-					AND		#$BF
-        			STA     IFLAGS          ;wait for start of screen
-        			LDA     #0
-        			STA     RASFLG          ;Flag that raster has been reached
-        			LDA     $FF09           ;clear any outstanding IRQ's
-        			STA     $FF09
-					;        JSR     SETRAS
-
-			NIRQ3   LDA     $FF13
-        			PHA
-        			STA     PLUS4_PAGE_ROM
-        			JSR     $DB11
-					PLA
-					LSR     A
-					BCS     NIRQ3A				; Si el but 0 de FF13 estaba a 1 es que estaba  la ROM asi que no paginamos RAM
-					STA     PLUS4_PAGE_RAM
-			NIRQ3A  PLA                     ;recall registers stored by ROM
-        			TAY
-        			PLA
-        			TAX
-        			PLA
-        			RTI	 
-
-					BIT     IFLAGS          ; BIT  bit 6 of tested address to overflow flag (V)
-					BVS     RasterNonTop    ; So if we jump if but 6 if iflags != 0, that is this is not the top scanline call
-											 
-SETRAS 				STA     $FF0B         ;LSB of raster compare
-        			LDA     #2
-        			STA     $FF0A         ;.. ensure MSBit is 0 and enable raster IRQ's
-        			LDA     $FF09         ;clear any outstanding IRQ's
-        			STA     $FF09
-        			RTS
-
-
-
-RasterTop			LDA #$F7
-					STA $FF19
-
-					INC     FRAMES
-					LDA     FRAMES          ;This counts 20m/s (1/50 sec!)
-					CMP     #64
-					BNE     RasterTopCont
-					INC     FRAMES+1        ;This counts 64*20m/s!
-					LDA     #$00
-					STA     FRAMES
-RasterTopCont		JSR 	SetGRMulticolor
-					LDA     IFLAGS
-					ORA     #$40      		; wait for PARTIAL POS, sets bit 6 of IFLAGS
-					AND 	#$DF			; clear bit 5 of IFLAGs to identify we are looking for middel raster line
-					ORA     #$40			; set bit 6, waiting for middle
-					STA     IFLAGS
-					LDA		#MIDDLE_RASTER_LINE			; Middle screen scanline
-					JSR     SetRasterInterrupt			
-
-					; JSR	INTVEC			; Jump to user defined interrupt code, disabled
-
-					BIT		IFLAGS			; See if Kernal available; Again, copy bit 7 to S flag (sign)
-					BMI     RasterExit		; Branch if minus (S flag set, that is Kernal NOT Available)
-					JMP     (OLDIRQ)        ;service ROM IRQ
-
-; ------------------ Now we have to determine if we got here waiting for middle scanline or bottom scanline
-RasterNonTop   		LDA     IFLAGS
-					AND 	#$20 			; Check bit 5
-					BEQ 	RasterMiddle	; Middle raster line
-
-; We were waiting for bottom raster line
-RasterBottom		LDA #$F5
-					STA $FF19
-
-
-					LDA 	IFLAGS
-					AND		#$9F  			; Clears bit 6 and bit 5
-					STA     IFLAGS          ; wait for start of screen
-					LDA     #$00
-					STA     RASFLG          ; Flag that raster has been reached
-					LDA     #TOP_RASTER_LINE
-					JSR     SetRasterInterrupt			; Set raster interrupt at line 0
-					JMP 	RasterExit
-
-; We were waiting for middle raster line
-RasterMiddle		LDA #$F2
-					STA $FF19
-
-					LDA 	IFLAGS			
-					ORA 	#$20				; Sets bit 5 of if flags (looking for bottom raster line)
-					STA 	IFLAGS								
-					LDA		#BOTTOM_RASTER_LINE 				; Bottom scanline (actually $CB)
-					JSR     SetRasterInterrupt			; Ahd set raster ionterrupt to ($2F1) + 49, which happens when the screen has completely been painted
-					JSR 	SetGRHiResolution
-
-RasterExit   		PLA                     ;recall registers stored by ROM
-					TAY
-					PLA
-					TAX
-					PLA
-					CLI
-					RTI
-
-;A short subroutine to select a raster interupt at the value held in reg. A
-
-SetRasterInterrupt	PHA
-
-					LDA     $FF09         ;clear any outstanding IRQ's
-        			STA     $FF09
-					LDA     #$00
-					STA     INT_ENABLE_REGISTER
-					LDA     #$02            	
-					STA     INT_ENABLE_REGISTER
-					;LDA     SCREEN_CTRL
-					;AND		#$7F
-					;STA     SCREEN_CTRL      	; Higher Bit of SCREEN_CTRL is tyhe 9th bit for raster compare
-					PLA
-					STA     RASTER_COMPARE         ;LSB of raster compare
-					RTS
-
-               
-
-SetGRMulticolor	    LDA BITMAP_MODE
-					ORA #$10				; Set Bit 4 for 
-					STA BITMAP_MODE
-					RTS
-
-SetGRHiResolution   LDA BITMAP_MODE
-					AND #$EF				; Clear Bit 4
-					STA BITMAP_MODE
-					RTS
-
 
 
 ; ------------------------------- Variables and tables  -----------------
@@ -795,9 +566,6 @@ PreserveSysmess0L	.byte 0
 PreserveSysmess0H   .byte 0
 PreserveBC_C		.byte 0
 PreserveBC_B		.byte 0
-;------------------------------
-OldIntHandler		.byte 0, 0
-ActiveIntHandler	.byte 0
 ;------------------------ Buffer is left last on purpose, so in case someone does not use xmessages, the binary file can be cutted to have 512 bytes less
 XmessageBuffer		.fill   511
 XmessageBufferLast  .byte 0			; .fill doesn't work if there is nothing after the fill, so instead of a 512 bytes fill, I do 511 and then a "db"
