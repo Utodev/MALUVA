@@ -5,7 +5,7 @@ PROGRAM SC2DRG;
 USES sysutils;
 
 CONST TWO_KILOBYTES = 2048;
-	  VERSION = '0.7';
+	  VERSION = '0.8';
 
 
 TYPE cpcHeaderType =  ARRAY[0..127] of Byte;
