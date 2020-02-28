@@ -37,6 +37,7 @@
 			define REG_PALETTE_VALUE	$41
 			define REG_PALETTE_CRTL		$43
 			define REG_MMU7			 	$57
+			define REG_CPUSPEED			$07
 
 
 			define INTERPRETER_ADDRESS $6000  	; Address where the interpreter is loaded
@@ -99,14 +100,15 @@ Init				LD 	D, A		; Preserve first parameter
 					CP  7
 					JP  Z, XUndone
 					CP 	8
-					JP 	Z, XDisableLayer2
+					JP 	Z, XNextCLS
 					CP  9
-					JP 	Z, XNextCleanUpAndReset
+					JP 	Z, XNextReset
+					CP  10
+					JP 	Z, XNextSpeed
 
 					JP 	ExitWithError
 ; ---- Set the filename
-LoadImg
-					LD 	A, D		; Restore first parameter
+LoadImg				LD 	A, D		; Restore first parameter
 					CALL 	DivByTen
 					ADD 	'0'
 					LD 	HL, Filename+2
@@ -149,8 +151,8 @@ fileOpened          LD	    (FileHandle),A
 					RST     $08
 					DB      F_READ     
 
-; ---- activate Layer2 (in case it wasn't already active)
-					LD 		A, 2
+; ---- deactivate Layer2 to make cleaning invisible
+					XOR 	A
 					LD 		BC, LAYER2_ACCESS_PORT
 					OUT 	(C),A
 
@@ -169,6 +171,17 @@ fileOpened          LD	    (FileHandle),A
 					DEC 	A							; If we have N lines, then last line is N-1
         			NEXTREG REG_CLIP_LAYER2, 0	    	; clip.layer2.y1 = (IMGNumLine)
         			NEXTREG REG_CLIP_LAYER2, A      	; clip.layer2.y2 = (IMGNumLine)
+
+; ---- clear the layer
+
+					CALL ClearLayer2
+
+; ---- activate Layer2
+					LD 		A, 2
+					LD 		BC, LAYER2_ACCESS_PORT
+					OUT 	(C),A
+
+
 ; ---- read and set palette
 					
 					NEXTREG REG_PALETTE_CRTL, %00010000			; auto-increment ON, active palette = first layer2 pal
@@ -281,11 +294,24 @@ DisableLayer2			NEXTREG REG_CLIP_WINDOW_CTRL, 1   	; reset Layer2 clip window in
         				NEXTREG REG_CLIP_LAYER2, 0      	; clip.layer2.y2 = (IMGNumLine)
 						RET						
 
-XDisableLayer2			CALL DisableLayer2
+XNextCLS				CALL DisableLayer2
+						CALL ClearLayer2
 						JP cleanExit
 
-XNextCleanUpAndReset	CALL DisableLayer2
+XNextReset				CALL DisableLayer2
+						CALL ClearLayer2
+						NEXTREG REG_CPUSPEED, $0		; On exit set 3.5Mhz back
 						RST 0				
+
+XNextSpeed				LD 	A, D
+						CP  4
+						JP 	NC, cleanExit				; Value > 3, invalid CPU speed
+						AND $03
+						LD 	D, A
+						SWAPNIB
+						OR 	D
+						NEXTREG REG_CPUSPEED, A
+						JP cleanExit
 
 
 
@@ -341,7 +367,7 @@ CloseFile			LD 	A, $FF			; That $FF will be modifed by code above
 
 diskFailure			LD 	L, 57			; E/S error
 DAADSysmesCall		CALL    DAAD_SYSMESS_ES
-					JR 	ExitWithError
+					JP 	ExitWithError
 
 XPart				LD 		A, D
 					ADD		'0'
@@ -471,6 +497,26 @@ FillUlaLayer		    XOR 	A
 						LDIR					; Copy that zero BC -1 times
 						RET
 						
+; Clear the layer 2
+
+ClearLayer2				LD 		B, 6
+						LD 		E, 24
+ClearLoop				LD 		A, E
+						NEXTREG REG_MMU7, A				; Change MMU7 bank
+						INC 	E
+						PUSH 	DE
+						PUSH 	BC
+						LD 		HL, $E000
+						XOR 	A	
+						LD 		(HL),A
+						LD 		BC, $2000 - 1
+						LD 		DE, $E001
+						LDIR
+						POP 	BC
+						POP 	DE
+						DJNZ 	ClearLoop
+						NEXTREG REG_MMU7, 1				; REstore original MMU bank
+						RET
 												
 
 
