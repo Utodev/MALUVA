@@ -306,10 +306,6 @@ XNextReset				CALL DisableLayer2
 XNextSpeed				LD 	A, D
 						CP  4
 						JP 	NC, cleanExit				; Value > 3, invalid CPU speed
-						AND $03
-						LD 	D, A
-						SWAPNIB
-						OR 	D
 						NEXTREG REG_CPUSPEED, A
 						JP cleanExit
 
