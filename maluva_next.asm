@@ -78,7 +78,7 @@ Start
 					CALL 	PatchForEnglish    		 ; look like losing time, I prefered keeping the code as smaller as possible, so I don't check if patch 
 					JR 		LangCont
 Spanish				LD 		A, $C9					; (RET)
-					LD      (DAAD_PATCH_ES), A 		; Patching the "ask for file name" routine so it doesn't break the words the nwriting messages afterwards
+					LD      (DAAD_PATCH_ES), A 		; Patching the "ask for file name" routine so it doesn't break the words when writing messages afterwards
 LangCont			POP		BC						 ; already applied. It takes milliseconds and no one could notice when playing anyway
 					POP 	AF
 
