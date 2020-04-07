@@ -36,8 +36,8 @@
 			define DAAD_FILENAME_ADDR_ES $70B5 ; DAAD function where the file name read by DAAD_READ_FILENAME_ES is stored
 			define DAAD_FILENAME_ADDR_EN $7055 
 
-			define DAAD_PRINTMSG_ADDR_ES $6DF1 ; DAAD function that prints the message pointed by HL
-			define DAAD_PRINTMSG_ADDR_EN $6D90
+			
+			define DDB_SYSMESS_TABLE_ADDR $8412 ;  Location of the pointer to the SYSMESS table in the DDB header
 
 			define DAAD_PATCH_ES $707A		    ; Address where the interpreter sets the internal flag which makes the words be cutted when printed
 			define DAAD_PATCH_EN $701A	
@@ -83,6 +83,8 @@ Init				LD 	D, A		; Preserve first parameter
 					JP  Z, XPart
 					CP  7
 					JP  Z, XUndone
+					CP 		255
+					JP 		Z, RestoreXMessage
 					JP 	ExitWithError
 ; ---- Set the filename
 LoadImg
@@ -323,9 +325,12 @@ XMessage			LD 		L, D ;  LSB at L
 					POP 	IX
 					POP 	BC
 					INC 	BC	 ; We need not only to increase BC, but also make sure when exiting it returns increased, and cleanExit will restore it from stack so we have to update valus at stack
+					LD 		A, (BC)
+					LD 		(PreserveBC), BC   ; Preserve BC so RestoreXMessage can go back to execution after XMES/XMESSAGE call
+					LD 		BC, FakeCondacts-1 ; Point to execution of fake condacts (SYSMESS 0 , RestoreXMessage)
 					PUSH 	BC
 					PUSH 	IX
-					LD 		A, (BC)
+					
 					LD 		H, A ; MSB AT H, so Message address at HL
 					LD	 	(XMessBuffer), HL   ; Preserve file offset, using the buffer as temporary address
 					CALL 	setDefaultDisk
@@ -336,14 +341,16 @@ XMessage			LD 		L, D ;  LSB at L
 					RST     $08
                     DB      F_OPEN      
                     JP      C, ExitWithError
-					LD 		(CloseFile+1),A ; Preserve file handle to be able to close it later
-					LD 		(XmessReadFile+1),A ; Preserve file handle to be able to read from it
+					LD 		(CloseFile + 1), A ; Preserve file handle to be able to close it later
+					LD 		(XmessReadFile + 1), A ; Preserve file handle to be able to read from it
 ; Seek file					
 					LD		DE, (XMessBuffer)	 ; Restore file offset
-					LD 		BC, 0   			; BCDE --> Offset 
-					LD 		IXL, 0    			; L=0 --> Seek from start
+					LD 		BC, 0   			 ; BCDE --> Offset 
+					LD 		IXL, 0    			 ; L=0 --> Seek from start
+					LD L, 0
 					RST 	$08
 					DB 		F_SEEK
+					JR 		C, CloseFile
 
 ; Read file					
 					LD 		IX, XMessBuffer
@@ -353,14 +360,49 @@ XmessReadFile		LD 		A, $FF; // Self modified above
 					DB      F_READ  ; Read 
 
 ; At this point we have the message at XmessBuffer		
-XmessPrintMessage	POP 	IX
-					SET 	6, (IX-01)  ; Required by DAAD to print messages
-					PUSH 	IX
-					LD 		HL, XMessBuffer
+
+; OK, this below needs to be explained: I didn't find a way to call the DAAD function to print text and make it work with an xmessage already loaded in RAM. Everything
+					; worked but the \n or  #n carriage return. The function was at address $1629 in the spanish interpreter. Then I decided to do the following: try to make the text
+					; being printed by the MES condact, and to do that I as going to execute a MES condact. How do I do that?
+					; 1) I modified first entry in the messages offsets table, preserving the value there before, to the address where the xmessage is loaded in RAM
+					; 2) I was udpating BC and making sure it is returned modified to the stack. DAAD uses BC as it's internal "PC" register, so changing BC actually makes DAAD run 
+					;    opcodes somewhere else. I pointed it to a zone in RAM (see below) where I already had sorted two condacts: MES 0, and EXTERN 0 255. MES 0 prints the text 
+					;    using MES condact and then EXTERN 0 255...
+					; 3) is another function in Maluva I'm using to restore the Message 0 pointer, and restoring BC, so the execution continues just after the XMES/XMESSAGE call
+
+XmessPrintMessage	LD 		HL, DDB_SYSMESS_TABLE_ADDR      ; DAAD Header pointer to SYSMESS table
+					LD 		E, (HL)
+					INC 	HL
+					LD 		D, (HL)
+					EX      HL, DE		   ; HL points to sysmess  pointers table
+					LD 		E, (HL)
+					INC		HL
+					LD 		D, (HL)  		; Now DE has the value of first message pointer, and HL points to where that pointer is
+					LD      (PreserveFirstSYSMES) , DE
+
+					LD		DE, XMessBuffer	; Addr where the message is stored
+					LD 		(HL), D
+					DEC		HL
+					LD 		(HL), E			; Store the offset at first message pointer 
+
+				
+XmesageExitPoint	JP 		CloseFile			  ; Close file and exit, we will actually jump to executing the fake condacts below
+
+					; So this is an unreachable (by the Z80 CPU) piece of codem which is actually DAAD code 
+FakeCondacts		DB 		$36, 0, 	$3D, 0, $FF   ; SYSMESS 0 EXTERN 0 255
+
+RestoreXMessage		LD 		HL, DDB_SYSMESS_TABLE_ADDR      ; DAAD Header pointer to SYSMESS table
+					LD 		E, (HL)
+					INC 	HL
+					LD 		D, (HL)
+					LD 		HL, PreserveFirstSYSMES
+					LDI
+					LDI
+					POP 	IX
+					POP 	BC
+					LD 		BC, (PreserveBC)
 					EI
-CallPrintMsg		CALL	DAAD_PRINTMSG_ADDR_ES					
-					DI
-					JR CloseFile  
+					RET
 
 
 ; ********************************************************************                        
@@ -413,8 +455,6 @@ PatchForEnglish			LD HL, DAAD_READ_FILENAME_EN
 						LD(cleanSaveName+1), HL
 						LD A, $C9						; Also patch the "ask for a file name" function so it doesn't make the words be cutted between lines after calling it (patch is RET replacing a RES 6,(IX-$0a))
 						LD (DAAD_PATCH_EN), A
-						LD HL, DAAD_PRINTMSG_ADDR_EN    ; Path the DAAD "PrintText" function
-						LD (CallPrintMsg+1), HL
 						RET
 
 
@@ -423,6 +463,8 @@ ImgNumLine					DB 	0
 SaveLoadFilename		DB 	"PLACEHOLD.SAV",0
 SaveLoadExtension		DB 	".SAV", 0
 XMESSFilename			DB  "0.XMB",0
+PreserveFirstSYSMES		DW 0
+PreserveBC				DW 0
 XMessBuffer				DS 512
 
 
