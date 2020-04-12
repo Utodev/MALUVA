@@ -33,7 +33,7 @@
 			define DAAD_SYSMESS_ES 	  $6DE8 ; DAAD function to print a system message
 			define DAAD_SYSMESS_EN 	  $6D94 
 
-			define DAAD_FILENAME_ADDR_ES $70B5 ; DAAD function where the file name read by DAAD_READ_FILENAME_ES is stored
+			define DAAD_FILENAME_ADDR_ES $70B5 ; DAAD address where the file name read by DAAD_READ_FILENAME_ES is stored
 			define DAAD_FILENAME_ADDR_EN $7055 
 
 			
