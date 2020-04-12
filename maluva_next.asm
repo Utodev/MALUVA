@@ -103,9 +103,9 @@ Init				LD 	D, A		; Preserve first parameter
 					CP  9
 					JP 	Z, XNextReset
 					CP  10
-					JP 	Z, XNextSpeed
-					CP 		255
-					JP 		Z, RestoreXMessage
+					JP 	Z, XSpeed
+					CP 	255
+					JP 	Z, RestoreXMessage
 					JP 	ExitWithError
 ; ---- Set the filename
 LoadImg				LD 	A, D		; Restore first parameter
@@ -303,8 +303,8 @@ XNextReset				CALL DisableLayer2
 						NEXTREG REG_CPUSPEED, $0		; On exit set 3.5Mhz back
 						RST 0				
 
-XNextSpeed				LD 	A, D
-						CP  4
+XSpeed					LD 	A, D
+						CP  2
 						JP 	NC, cleanExit				; Value > 3, invalid CPU speed
 						NEXTREG REG_CPUSPEED, A
 						JP cleanExit
