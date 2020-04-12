@@ -17,9 +17,9 @@ BEGIN
 	Writeln();
 	Writeln(BinaryName,' ',VERSION);
 	Writeln();
-	WriteLn('SYNTAX: ',BinaryName,' <target> <inputFilename> <outputFilename> <lines> [transparency]');
+	WriteLn('SYNTAX: ',BinaryName,' <target> <inputFilename> <outputFilename> <lines> [[transparency|BorderColor] [TargetColor]]');
 	Writeln();
-	Writeln('Target may be c64, cp4, cpc, msx, zx or next. CP4 stands for Commodore Plus/4 although it''s obly used for multicolor images, for HiRes it uses the C64 images');
+	Writeln('Target may be c64, cp4, cpc, msx, zx,  uno, or next. CP4 stands for Commodore Plus/4 and uno stands for ZX-Uno.');
 	Writeln();
 	Writeln('Transparency could only be used in ZX Spectrum Next, value it''s a 0-255 value representing a color in RRRGGGBB format, or ''auto''. If value is 0 there will be no transparency so pure black cannot be used as transparent color. ');
 	Writeln();
@@ -60,7 +60,7 @@ BEGIN
 		Writeln();
 		WriteLn('The output file should have .NXT extension, and have three digits for the number, i.e.: 001.NXT, 012.NXT, 118.NXT');
 		Writeln();
-		WriteLn('You can set transparency to any value from 0 to 255, representing a RGB value in RRRGGGBB (bitwise) format, in which case pixels matching that color will be transparent. If value is 0 then there will be no transparency, so pure black cannot be the transparent color. Also, if you set transparency to "auto", the most used color in the image will be the transparent one');
+		WriteLn('You can add an additional parameter for the transparency: any value from 0 to 255, representing a RGB value in RRRGGGBB (bitwise) format, in which case pixels matching that color will be transparent. If value is 0 then there will be no transparency, so pure black cannot be the transparent color. Also, if you set transparency to "auto", the most used color in the image will be the transparent one');
 		Writeln();
 		WriteLn('Please notice you can create a 256 color file using GIMP, make sure you use an indexed palette, 256 colors. Also take in mind Spectrum Next palette has a palette of 512 colors, so the 256 colors you file has will be addapted to the 256 closer colors from that palette.');
 		Halt(0);
@@ -93,6 +93,24 @@ BEGIN
 		Writeln();
 		WriteLn('The output file should have .4 extension, and have three digits for the number, i.e.: 001.4, 012.4, 118.4');
 		Writeln();
+		Halt(0);
+	END;
+    IF uppercase(target)='UNO'	THEN
+    BEGIN
+		WriteLn('ZX-Uno uses Timex HiColor mode and ULAplus. You require a .MLT file created by ZX-Paintbrush or Image2Ulaplus, which may contain the palette information (12355 bytes long)  or not (12288 bytes). If not, you should also place a .tap file with the palette in the same folder (same name, .tap extension).');
+		Writeln();
+		WriteLn('You should specify the number of lines from top you want to include in the image. Number of lines should be 96.');
+		Writeln();
+		WriteLn('The output file should have .UNO extension, and have three digits for the number, i.e.: 001.UNO, 012.UNO, 118.UNO');
+		Writeln();
+		WriteLn('Please notice color used for paper colour 0  in the ULAPlus first CLUT (colour #8 in the ULAPlus palette) will be used as border color in the upper area. Unless you want half the screen with a different border make sure you set that RGB palette to same color you use as border.');
+		WriteLn('ZX Paintbrush allows you to change the palette, but in case you use Image2ULAplus or any other tool, SC2DAAD allows you to automatically swap colours in the 9-15 range with the color. You can do tha by using two additional parameters: borderColor and TargetColor.');
+		Writeln();
+		Writeln('SC2DAAD uno 001.mlt 001.uno 96 14 0    <<--- This asks SC2DAAD to swap colors 14 and 8 from the palette, then replace color 8 RGB value with the value of color 0 (black) in the original palette.');
+		Writeln();
+		Writeln('Please notice you can replace the bordercolor with "auto", in which case SC2DAAD wil look for the colour in the 9-15 range in the palette which is closer to standard palette color specified just after:');
+		Writeln();
+		Writeln('SC2DAAD uno 001.mlt 001.uno 96 auto 2    <<--- This asks SC2DAAD to swap the colour in the 9-15 range of the palette which better matchs the color for the original color #2 (dark red) with color 8.');
 		Halt(0);
 	END;
 	Writeln('Unknown target.');
@@ -195,6 +213,8 @@ BEGIN
 	CloseFile(inFile);
 	CloseFile(outFile);
 END;	
+
+
 
 PROCEDURE CPC(inputFilename, outputFilename: string; lines:word);
 VAR i, bytesToRead, current2KBuffercount: word;
@@ -303,6 +323,159 @@ BEGIN
 	CloseFile(inFile);
 	CloseFile(outFile);
 END;
+
+
+CONST StandardZXPalette : array [0..15] of byte = ($00, $02, $14, $16, $A0, $A2, $A4, $A6,
+                                                   $00, $03, $1C, $1F, $E0, $E3, $FC, $FF) ; //GGGRRRBB
+
+
+// Looks for a color at the given palette, between positions 9 and 15, whose RGB value is closest to the RGB value or "targetColor" in the original Spectrum Palette
+FUNCTION GetBestColor(var paletteBuffer: array of byte; TargetColor:byte): byte;
+VAR ClosestLength : real;
+    i, ClosestColor : Byte;
+	RDistance, GDistance, BDistance : Byte;
+BEGIN
+ ClosestColor := 8;
+ ClosestLength := 1000; // Just a big mumber
+ FOR i := 9 to 15 DO
+ BEGIN
+	RDistance := ABS(((paletteBuffer[i] AND $1C) SHR 2) - ((StandardZXPalette[targetcolor] AND $1C) SHR 2));
+	GDistance := ABS(((paletteBuffer[i] AND $E0) SHR 5) - ((StandardZXPalette[targetcolor] AND $E0) SHR 5));
+	BDistance := ABS(((paletteBuffer[i] AND $03)) - ((StandardZXPalette[targetcolor] AND $03)));
+	IF (RDistance+GDistance+BDistance < ClosestLength) THEN
+	BEGIN
+		ClosestLength := RDistance+GDistance+BDistance;
+		ClosestColor := i;
+	END; 
+ END;
+ WriteLn('Best palette color for replacement: ', ClosestColor);
+ Result := ClosestColor;
+END;
+
+
+// BorderColor: value in the palette to switch with color 8, -1 means "find the better one, AKA auto", -2 means, do not fixe palette
+// TargetColor: standard Spectrum color (0-15) wich will replace the color 8 once palette swapped. Won't be applied if BorderColor=-2
+PROCEDURE UNO(inputFilename, outputFilename: string; BorderColor: integer; TargetColor: integer);
+VAR i, j: word;
+	inFile, outFile: FILE;
+	TempBuffer: ARRAY [0..6143] OF byte;
+	paletteBuffer : ARRAY [0..63]  OF byte;
+	palFileName : String;
+	Value: Byte;
+	(* 
+	 UNO FILE FORMAT IS:
+	 00-63 : ULAPlus Palette		
+	 64-   : two blocks of same size, just like in any Timex screen, but with less lines (96, as ZX_Uno split screen is always at 96 so no other height is allowed)
+	*)
+BEGIN
+
+
+	// Open image
+	AssignFile(inFile, inputFilename);
+	TRY
+		Reset(inFile, 1);
+	EXCEPT
+	 	on E: Exception DO 
+	END; 
+
+	if ((FileSize(inFile)<>12288) AND (FileSize(inFile)<>12352)) THEN Error('Invalid .MLT file, size should be 12288, or 12352 if it contains the palette');
+
+
+	// Read the palette
+	if (FileSize(inFile)=12352) THEN 
+	BEGIN
+		Seek(inFile, 12288);
+		BlockRead(inFile, paletteBuffer, 64);
+	END
+	ELSE
+	BEGIN
+		palFileName := changeFileExt(inputFilename,'.tap');
+		AssignFile(inFile, palFileName);  
+		TRY
+			Reset(inFile, 1);
+			Seek(inFile, FileSize(inFile) - 66);  // Palette info is located at the 64 bytes before the last two ones.
+			BlockRead(inFile, paletteBuffer, 64);
+		EXCEPT 
+			on E: Exception DO Error('Your MLT file did not include the palette, and it was not possible to find the .tap file with the palette. If your OS is case sensitive, make sure the palette file has the .tap extension in lowercase.' + E.Message);
+		END; 
+		CloseFile(inFile);
+	END;
+
+
+	// Open output file
+	AssignFile(outFile, outputFilename);
+	TRY
+	Rewrite(outFile, 1);
+	EXCEPT
+	 on E: Exception DO Error('Can''t open file for output:' + E.message);
+	END; 
+
+	// Dump palette
+	BlockWrite(outFile, paletteBuffer, 64); 
+
+	// Dump two datablocks of 96 lines
+	Seek(inFile, 0);
+	CopyBlock(inFile, outFile, TWO_KILOBYTES); // First third it's complete
+	FOR j:= 1 TO 8 DO
+	BEGIN
+	 	CopyBlock(inFile, outFile, 128); // it's just half of the second third, so we copy 128 bytes, skip 128, copy 128, skip 128, etc.
+		Blockread(inFile, TempBuffer, 128);
+	END;
+
+	// Second block, the attributes, comes as linear in MLT files (don't ask me why), so we have to sort it the usual Spectrum way
+	Seek(inFile, 6144);
+	BlockRead(inFile, TempBuffer, 6144); // Load it all
+
+	// If we have a border color and target color, fix the palette and the image
+	IF (BorderColor<>-2) THEN
+	BEGIN
+		IF (BorderColor=-1) THEN // Calculate better color
+		  BorderColor := GetBestColor(paletteBuffer, TargetColor);
+		
+		paletteBuffer[BorderColor] := paletteBuffer[8]; // Preserve Color 8 
+		paletteBuffer[8] := StandardZXPalette[TargetColor];
+		for  i:= 0 to 6143 do
+		BEGIN
+		    Value := TempBuffer[i];
+			if ((Value AND $C0) = 0) THEN // IF CLUT = 00
+			BEGIN
+				IF (((Value AND $38) SHR 3) = 0) THEN  
+				BEGIN
+					Value := Value AND $C7 OR ((BorderColor - 8) SHL 3);
+				END
+				ELSE
+				IF (((Value AND $38) SHR 3) = (BorderColor-8))  THEN  
+				BEGIn
+					Value := Value AND $C7;  
+				END;
+				TempBuffer[i] := Value;
+			END;
+		END;
+	END;
+
+
+
+	for i:= 0 to 7 do
+	 for j := 0 to 7 do
+	   BlockWrite(OutFile, TempBuffer[i*32+j*32*8], 32); // First third
+
+	//Seek(inFile, 6144 + 2048);
+	for i:= 0 to 7 do
+	 for j := 0 to 3 do
+	   BlockWrite(OutFile, TempBuffer[2048+i*32+j*32*8],32); // Half second  third
+
+	//if we had border and target color, fixe the palette
+	if (BorderColor <> -2) THEN 
+	BEGIN
+	 Seek(OutFile, 0);
+	 BlockWrite(OutFile, paletteBuffer, 64);
+	END; 
+
+
+	CloseFile(inFile);
+	CloseFile(outFile);
+END;
+
 
 PROCEDURE NEXT(inputFilename, outputFilename: string; lines:byte; transparency : byte; Auto: boolean);
 	(* 
@@ -728,6 +901,7 @@ END;
 VAR target, inputFilename, outputFilename: string;
 	lines : word;
 	transparency : byte;
+	BorderColor, TargetColor : integer;
 	AuxString: string;
 	AuxVal : Longint;
 	Auto : Boolean;
@@ -743,7 +917,7 @@ BEGIN
 
 	// Check param Errors
 
-    IF (target<>'CPC') AND (target<>'NEXT') AND (target<>'ZX') AND (target<>'MSX') AND (target<>'CP4')  AND (target<>'C64') THEN Error('Invalid target.');
+    IF (target<>'CPC') AND (target<>'NEXT') AND (target<>'ZX') AND (target<>'MSX') AND (target<>'CP4')  AND (target<>'C64') AND (target<>'UNO') THEN Error('Invalid target.');
 
     IF (uppercase(inputFilename) = 'HELP' ) THEN Help(target);	
 
@@ -758,12 +932,48 @@ BEGIN
     IF (target='CPC') AND (lines >96) AND (lines <>200) THEN Error('Maximum number of lines for CPC is 96, althought you can choose full screen with 200 lines');
     if (target='C64') AND (lines>200) THEN Error('Maximum number of lines for C64 is 200');
 	if (target='CP4') AND (lines>200) THEN Error('Maximum number of lines for C64 is 200');
+	if (target='UNO') AND (lines<>96) THEN Error('Lines for ZX-Uno should be 96');
 
     IF  ((lines MOD 8) <> 0) THEN Error('Number of lines must be a multiple of 8');
 
     IF (NOT FileExists(inputFilename)) THEN Error('File not found');
 
-	IF target='NEXT' THEN 
+   IF (target='UNO') THEN
+   BEGIN
+		BorderColor := -2;
+		TargetColor := 0;	
+		If (ParamCount>4) THEN
+		BEGIN
+			AuxString := ParamStr(5);
+			if (AnsiUpperCase(AuxString)='AUTO') THEN
+			BEGIN
+				 BorderColor := -1 
+			END
+			ELSE 
+			BEGIN
+				TRY
+					AuxVal := StrToInt(AuxString);
+				EXCEPT
+					On E : EConvertError DO Error('Invalid border color: ' + E.message);
+				END;
+				IF ((AuxVal<9) OR (AuxVal>15)) THEN Error('Invalid border color: should be a value in the 9-15 range');
+				BorderColor := AuxVal;
+			END;
+			IF (ParamCount>5) THEN
+			BEGIN
+				AuxString := ParamStr(6);
+				TRY
+					AuxVal := StrToInt(AuxString);
+				EXCEPT
+					On E : EConvertError DO Error('Invalid target color: ' + E.message);
+				END;
+				IF ((AuxVal<0) OR (AuxVal>15)) THEN Error('Invalid target color: should be a value in the 0-15 range');
+				TargetColor := AuxVal;
+			END;
+		END;
+	END;
+
+	IF (target='NEXT') THEN 
 	BEGIN
 		transparency := 0;
 		IF (ParamCount>4) THEN
@@ -793,6 +1003,7 @@ BEGIN
     ELSE IF target = 'CPC' THEN CPC(inputFilename, outputFilename, lines) 
     ELSE IF target = 'MSX' THEN MSX(inputFilename, outputFilename, lines)
     ELSE IF target = 'CP4' THEN CP4(inputFilename, outputFilename, lines)
+    ELSE IF target = 'UNO' THEN UNO(inputFilename, outputFilename, BorderColor, TargetColor)
     ELSE IF target = 'C64' THEN C64(inputFilename, outputFilename, lines);
 
 END.
