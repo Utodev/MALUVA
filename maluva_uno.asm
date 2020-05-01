@@ -57,7 +57,7 @@
 			define ULAPLUS_DATA_PORT	$FF3B
 
 			define BOTTOM_SPLIT_LINE    248
-			define MIDDLE_SPLIT_LINE    95
+			define MIDDLE_SPLIT_LINE    96
 		
 
 
@@ -181,13 +181,6 @@ pageIn				LD   	E, 7              ;switch in RAM page 7
 					LD	 	IX, $E000
 					CALL 	drawHalfScreen ; Read half second third
 
-					/*LD HL, $E000
-					LD A, 11100000b
-					LD (HL),A
-					LD DE, $E001
-					LD BC, 2047+2048
-					LDIR*/
-
 ; --- Page in bank 0
 
 pageOut				LD 		E, 0
@@ -217,8 +210,12 @@ page128KBank		LD   BC,$7FFD       ; I/O address of horizontal ROM/RAM switch
 ; --- Loads from file the information for half a screen (96 lines) to the address set at IX
 drawHalfScreen	   	LD 		A, 0		; read first thrid
 					LD      BC, 2048
+					PUSH 	IX
+					PUSH 	BC
 					RST     $08
 					DB      F_READ 
+					POP		BC
+					POP 	IX
 					ADD 	IX, BC		; read half of second third
 					LD		BC, 128		; 4 character lines remaining (4*32)
 					LD 		E, 8		; Times to do the loop, will be used as counter. We don't use B and DJNZ cause we need BC all the time and in the end is less productive
@@ -231,7 +228,7 @@ drawLoop			LD 		A, 0 		; file handle
 					INC  	IXH		; Increment  256 to point to next line address
 					POP 	DE
 					DEC 	E
-					JR 	NZ, drawLoop					
+					JR 	NZ, drawLoop
 					RET
 
 ; It happens the DAAD code sets the "done" status after the execution of an EXTERN, something which happens in a function called NXTOP, which does a few thing and then jumps to 
@@ -606,6 +603,10 @@ InterruptHandlerEnd		POP 	AF
 						RET
 
 DisableExtendedGraphics 
+
+						LD B, 63
+LoseTimeLoop			DJNZ LoseTimeLoop
+
 						XOR 	A					; Disable Timex mode
 						OUT 	(255),A
 
