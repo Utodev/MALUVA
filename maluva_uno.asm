@@ -383,8 +383,18 @@ ZXUnoInit			LD BC, 	ZXUNO_PORT				; Make sure 128K pagination is ON
 					RET
 					
 
-XSpeed				CALL SetUnoSpeed
+XSpeed				LD A, D
+					OR A
+					LD A, 126
+					
+					JR NZ, XSpeed2
+					LD A, 63
+XSpeed2				LD (LoseTimeLoop-1), A
+					CALL SetUnoSpeed
 					JP cleanExit
+
+
+					
 
 
 SetUnoSpeed			LD 		A, D
