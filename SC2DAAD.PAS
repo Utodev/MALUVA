@@ -5,7 +5,7 @@ PROGRAM SC2DRG;
 USES sysutils;
 
 CONST TWO_KILOBYTES = 2048;
-	  VERSION = '0.8';
+	  VERSION = '0.9';
 
 
 TYPE cpcHeaderType =  ARRAY[0..127] of Byte;
@@ -488,12 +488,12 @@ PROCEDURE NEXT(inputFilename, outputFilename: string; lines:byte; transparency :
 	// auto=true means ignore the transparency color, and use the one that repeats the most, unless it's 0 which will raise an error
 	// Hey! I've borrowed the PCX decoding code from PCX2TWK, an utility I made in 1995 as part of my text adventure game engine NMP. So thanks to the 24 years younger myself for that work :-D
 VAR	inFile, outFile: FILE;
-	r,g,b,rgb,i,a : byte;
-	j: word;
+	r,g,b,i,a : byte;
+	rgb, j: word;
 	width, height : word;
 	PCXHeader: ARRAY[0..127] OF Byte;
 	Palette : ARRAY[0..767] OF Byte;
-	Palette8B : ARRAY[0..255] OF Byte;
+	Palette8B : ARRAY[0..255] OF Word;
 	Buffer : ARRAY[0..255] OF Byte;
 	Used : ARRAY[0..255] OF Longint;
 	Max: Word;
@@ -532,9 +532,12 @@ BEGIN
  		B:= Palette[i*3+2];
 		R:= round(R * 7 / 255);
 		G:= round(G * 7 / 255);
-		B:= round(B * 3 / 255);
-		RGB := (R SHL 5) + (G SHL 2) + B;
-		BlockWrite(outFile, RGB, 1);
+		B:= round(B * 7 / 255);
+		RGB := (R SHL 6) + (G SHL 3) + B; // 9-bit value
+		A := RGB SHR 1;
+		BlockWrite(outFile, A, 1);  // save first 8 bits
+		A := RGB AND 1;
+		BlockWrite(outFile, A, 1);  // save first 8 bits
 		Palette8B[i] := RGB;
 	END;
 	// Process the pixels
@@ -573,7 +576,7 @@ BEGIN
 		END; 
 		END;
 		RGB := Palette8B[MaxIndex];
-		WriteLn('Most used color is ', MaxIndex,' which assigned RGB is ', RGB);
+		WriteLn('Most used color is ', MaxIndex,' whose assigned RGB value is (', RGB, ')');
 		if (RGB=0) THEN Writeln('Warning: auto transparency found most used color is RGB (0,0,0) which will not apply transparency');
 		Seek(outFile, 0);
 		BlockWrite(outFile, RGB, 1); // Replace the transparent color with the one we found

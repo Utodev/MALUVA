@@ -34,7 +34,7 @@
 			define REG_CLIP_LAYER2		$18
 			define REG_CLIP_WINDOW_CTRL $1C
 			define REG_PALETTE_INDEX    $40
-			define REG_PALETTE_VALUE	$41
+			define REG_PALETTE_VALUE	$44
 			define REG_PALETTE_CRTL		$43
 			define REG_MMU7			 	$57
 			define REG_CPUSPEED			$07
@@ -190,10 +190,12 @@ fileOpened          LD	    (FileHandle),A
 PaletteLoop			LD 		IX, PaletteVal
 					PUSH 	BC
 					LD 		A,(FileHandle)
-					LD      BC, 1
+					LD      BC, 2
 					RST     $08
 					DB      F_READ          		; Read one byte
 					LD 		A, (PaletteVal)
+					NEXTREG REG_PALETTE_VALUE, A
+					LD 		A, (PaletteVal+1)
 					NEXTREG REG_PALETTE_VALUE, A
 					POP		BC
 					DJNZ    PaletteLoop
@@ -557,7 +559,7 @@ ClearLoop				LD 		A, E
 Filename				DB 	"UTO.NXT",0
 TransparencyColor		DB  0
 IMGNumLine				DB 	0
-PaletteVal				DB 	0
+PaletteVal				DW 	0
 FileHandle				DB	0
 SaveLoadFilename		DB 	"PLACEHOLD.SAV",0
 SaveLoadExtension		DB 	".SAV", 0
