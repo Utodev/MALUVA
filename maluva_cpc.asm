@@ -37,7 +37,7 @@
 						define DEL_FAST_TICKER			 $BCE6
 						define FIRMWARE_MODE_NUMBER		 $B7C3
 						define DAAD_FAST_TICK_SPACE		 $A609  ;  This is a small area I've found, that is just after the frame flyback area
-						define UPPER_MODE				 0 ; default upper mode in split screen 
+						define UPPER_MODE				 1 ; default upper mode in split screen 
 						define LOWER_MODE				 1 ; default lower mode in split screen 
 						define FADE_TO_BLACK			 0 ; default fade or not when in split screen
 
