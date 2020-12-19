@@ -2,8 +2,8 @@
 ; LGPL License applies, see LICENSE file
 ; TO BE COMPILED WITH SJASMPLUS , use --exp export.asm parameter so export.asm is generated for the interrupt handler
 ; Thanks to Boriel for his 8 bits division code in ZX-Basic, DivByTen function is based on his code
-; Thanks to Rafagr32, Wilco, Augustoruiz, Fran Gallego, Fer, D_Skywalk  and some others I'm surely forgetting to mention, 
-; who helped a lot with their valuable CPC knowledge
+; Thanks to Rafagr32, Wilco, Augustoruiz, Fran Gallego, Fer and some others I'm surely forgetting to mention, who helped
+; a lot with their valuable CPC knowledge
 
 						ORG $28BC
             			OUTPUT MLV_CPC.BIN
@@ -91,13 +91,9 @@ LoadPictureCont			LD 	A, D		; Restore first parameter
 
 						CALL SilenceFW
 
-;  let's mark  we are loading so the interrupt handler stops switching palettes.
-						LD A, 1
-						LD (LoadingGraphics),A
-; Fade to black 
-DoFadeToBlack			CALL 	HideScreen
+; Determine if we make a fade to black 
+DoFadeToBlack			CALL 	NZ, HideScreen
 						CALL 	WaitForVsync
-
 
 
 ; --- open file and reads CPC header, leaving file pointer just after
@@ -120,7 +116,6 @@ DoFadeToBlack			CALL 	HideScreen
                         POP 	IY			; We store header-2 address at IY for later use
 
 
-						
 												
 ; Check if it is full picture to load it in a different way, a full screen picture is 16384  bytes long (and includes the palette in the last 4 bytes, over the "spare" zone in any CPC picture)
 
@@ -137,11 +132,7 @@ LoadFullPicture			LD 		HL, VRAM_ADDR		   		;  Read all picture data in screen
 						LD 		HL, VRAM_ADDR + 16384 - 16   ;  Palette fw colors have been loaded at the end
 						CALL	BackupPalette
 						CALL    SetPalette
-						XOR 	A
-						LD 		(LoadingGraphics), A			 ;mark we are not loading a picture anymore, so the int handler starts switching palettes
-						JR 	FileLoaded		   					; Ok, let's go to exit procedure
-
-
+						JR 	FileLoaded		   			; Ok, let's go to exit procedure
 
 
 ; Ok, this codebelow needs an explanation: when CPC reads char by char using CAS_IN_CHAR, it actually reads 2K of data on first CAS_IN_CHAR, and then every 
@@ -206,13 +197,15 @@ ReadFileCont			PUSH 	HL
 						LD 		HL, PaletteBuffer
 						CALL 	BackupPalette
 						CALL 	SetPalette
-						XOR 	A
-						LD 		(LoadingGraphics), A ;mark we are not loading a picture anymore, so the int handler starts switching palettes
+
+
 
 ; ---- Close file		
 FileLoaded				CALL 	CAS_IN_CLOSE
 						CALL    WaitForVsync
 						CALL    WaitForVsync	; Waiting for two Vsync(1/25 second) to make sure everything restabilishes properly
+
+
 
 
 	
@@ -567,7 +560,7 @@ SetPaletteLoop 			LD 		B,(HL)
 						JR 		NZ, SetPaletteLoop
 						RET
 
-; Copies the 16  bits pointed by HL in LastPaletteBuffer. No registers modified
+; COpies the 16  bits pointed by HL in LastPaletteBuffer. No registers modified
 BackupPalette			PUSH 	HL
 						PUSH 	DE
 						PUSH 	BC
@@ -584,8 +577,6 @@ BackupPalette			PUSH 	HL
 
 cleanExitRestorePal     LD HL, LastPaletteBuffer
 						CALL SetPalette
-						XOR A
-						LD (LoadingGraphics), A   ; Not loading a picture anymore
 						JP ExitWithError
 
 
@@ -601,7 +592,7 @@ Next2KBlock		LD 	HL, BUFFER2K_ADDR + TWO_KILOBYTES	; Set buffer pointer to end o
 
 				LD 	A, (ScansPer2kBuffer)
 				LD 	IXH, A				; restore number of scans to read on next buffer
-				LD 	HL, BUFFER2K_ADDR			; restore source point to beginning of buffer
+				LD 	HL, BUFFER2K_ADDR			; restore source pointer to beginning of buffer
 				JP 	ReadFileCont
 
 
@@ -637,26 +628,6 @@ HideScreen				LD 	HL, PaletteBuffer
 						CALL SetPalette
 						RET
 
-SimpleTextPalette		LD 		A,  $0
-						LD 		BC, $0
-						CALL SCR_SET_INK
-						LD 		A,  $1
-						LD 		BC, $1A1A
-						CALL SCR_SET_INK
-						RET
-
-SimpleTextPaletteRec	LD 		A,  $0
-						LD 	HL, PaletteBuffer
-						LD 		B,(HL)
-						CALL SCR_SET_INK
-						LD 		A,  $1
-						LD 	HL, PaletteBuffer + 1
-						LD 		B,(HL)
-						CALL SCR_SET_INK
-						RET
-
-
-
 
 ErrorMode				DB 	0				; 0 = Report errors in flag 128, 1= Report Errors as DONE status
 Filename				DB 	"000.CPC"
@@ -666,9 +637,8 @@ XMESSFilename			DB  "00.XMB"
 PreserveFirstSYSMES		DW 0
 PreserveBC				DW 0
 XpartPart				DB 0
-LoadingGraphics			DB 0
 PaletteBuffer 			DS 16
-LastPaletteBuffer 		DB 0,26,0,26  ; Last PaletteBuffer is 16 bytes long, but we want the first 4 bytes to be a paletta with some contrast, in case the firs picture loading fails. Thus, instead of DS 16, we have 4xDB and DS 12
+LastPaletteBuffer 		DB 0,26,24,11  ; Last PaletteBuffer is 16 bytes long, but we want the first 4 bytes to be a paletta with some contrast, in case the firs picture loading fails. Thus, instead of DS 16, we have 4xDB and DS 12
 						DS 12
 LastXmessFile			DB 255
 Time					DB 0			; Used by the MODE0/1 interrupt core
@@ -701,6 +671,8 @@ IntPatch2L				LD	(HL),LOWER_MODE   ; Make sure FW is printing text in lower scre
 						EXX
 
 
+;PUES NO SE QUE LECHES PASA QUE SI CAMBIO ESE 2 POR UNA A salen mal los textos
+
 ; --------------  Init fast tick event
 
 						LD 		HL, Time
@@ -725,8 +697,6 @@ FastTickerHandler		DI
 						PUSH 	HL
 						PUSH 	DE
 						PUSH 	AF
-
-				
 						LD 		HL, FIRMWARE_MODE_NUMBER
 IntPatch5L				LD		(HL), LOWER_MODE
 						LD 		HL, Time
@@ -735,13 +705,7 @@ IntPatch5L				LD		(HL), LOWER_MODE
 						CP 		2					; Do change only in tick 3  (5-3  =2)
 						JR 		NZ,FastTickerExit
 
-
-; Set a white on black palette for the lower area (text)
-						LD A, (LoadingGraphics)
-						OR A
-						CALL Z, SimpleTextPaletteRec
-
-						LD 		B, 30				; Delay to keep a few more lines in mode 0
+						LD 		B, 1*64				; Delay to keep a few more lines in mode 0
 LoopWait				NOP
 						DJNZ 	LoopWait						
 
@@ -759,14 +723,7 @@ IntPatch3L				LD  A, LOWER_MODE
 						EXX
 
 ; ------------- Remove fast ticker
-
-						
-; restore last picture palette
-						LD A, (LoadingGraphics)
-						OR A
-						CALL Z, SimpleTextPalette
-
-SkipPalette2			LD  	HL, DAAD_FAST_TICK_SPACE
+						LD  	HL, DAAD_FAST_TICK_SPACE
 						CALL	DEL_FAST_TICKER     ; Delete ticker 
 FastTickerExit			POP 	AF
 						POP 	DE
@@ -774,6 +731,5 @@ FastTickerExit			POP 	AF
 						POP 	BC
 						EI
 						RET
-
 
 
