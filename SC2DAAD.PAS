@@ -1,5 +1,4 @@
 PROGRAM SC2DRG; 
-
 {$MODE OBJFPC}
 
 USES sysutils;
