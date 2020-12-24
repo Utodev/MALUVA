@@ -412,7 +412,8 @@ sfxFreqAY				DW	0xD65, 0xC9D, 0xBEB, 0xB42, 0xA9A, 0xA04, 0x971, 0x8E8, 0x86B, 0
 
 
 
-XMessage				LD 		L, D   ; First parameter (LSB) to L
+XMessage				CALL FindM4ROM
+						LD 		L, D   ; First parameter (LSB) to L
 						POP 	IX
 						POP 	BC
 						INC 	BC
@@ -432,7 +433,7 @@ XMessage				LD 		L, D   ; First parameter (LSB) to L
 						LD 		B, A				;Check if file loaded is the same than last time, to avoid loading again						
 						LD 		A, (LastXmessFile)
 						CP 		B
-						JR 		Z, AlreadyInRAM
+M4Patch					JR 		Z, AlreadyInRAM
 
 						LD 		A, B				; Otherwise save current file to be read as last read file
 						LD		(LastXmessFile),A
@@ -628,6 +629,51 @@ HideScreen				LD 	HL, PaletteBuffer
 						CALL SetPalette
 						RET
 
+; ************** FIND M4 ROM						
+FindM4ROM	PUSH DE
+			PUSH BC
+			PUSH HL
+
+			LD	D,127		; Start Looking for ROM  (Counting Downwards)
+			
+ROMLoop 	PUSH	DE
+			LD		C,D
+			CALL	$B90F		; System/Interrupt friendly
+			LD		A,($C000)	; Must be 0x01
+			DEC 	A
+			JR		NZ, NotThisROM
+			LD		HL, ($C004)	; GET RSXCOMMAND_TABLE
+			LD		DE, M4_ROM_NAME	; ROM IDENTIFICATION LINE
+
+CMPLoop		LD		A,(DE)
+			XOR		(HL)			
+			JR		Z, CharMatch
+
+NotThisROM	POP		DE
+			DEC		D
+			JR		NZ, ROMLoop
+			JR 		ExitNoM4
+			RET
+			
+CharMatch	LD		A,(DE)
+			INC		HL
+			INC		DE
+			AND		0x80
+			JR		Z,CMPLoop
+
+ExitYesM4	XOR A				  ; M4 found, patch Maluva so Xmessages loaded at $0040 are not re-used, because M4 overwrites that memory area
+			LD 	(M4Patch + 1), A  ; This makes the delta of the JR there become 0, so whether is succesful or not, it jumps to next line
+
+ExitNoM4   LD HL, XMessage				; Patch code so FindM4ROM is never called again, as the "CALL FindM4ROM" is  replaced by "LD BC, FindM4ROM"
+		   LD A, 1
+		   LD (XMessage), A
+
+		   POP HL
+		   POP BC
+		   POP DE
+		   RET
+
+
 
 ErrorMode				DB 	0				; 0 = Report errors in flag 128, 1= Report Errors as DONE status
 Filename				DB 	"000.CPC"
@@ -642,6 +688,7 @@ LastPaletteBuffer 		DB 0,26,24,11  ; Last PaletteBuffer is 16 bytes long, but we
 						DS 12
 LastXmessFile			DB 255
 Time					DB 0			; Used by the MODE0/1 interrupt core
+M4_ROM_NAME				DB "M4 BOAR",0xC4   ; C4 = 'D' ASCII code with the 7th bit set
 EndOfMainCode
 
 
