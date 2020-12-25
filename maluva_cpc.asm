@@ -664,9 +664,8 @@ CharMatch	LD		A,(DE)
 ExitYesM4	XOR A				  ; M4 found, patch Maluva so Xmessages loaded at $0040 are not re-used, because M4 overwrites that memory area
 			LD 	(M4Patch + 1), A  ; This makes the delta of the JR there become 0, so whether is succesful or not, it jumps to next line
 
-ExitNoM4   LD HL, XMessage				; Patch code so FindM4ROM is never called again, as the "CALL FindM4ROM" is  replaced by "LD BC, FindM4ROM"
-		   LD A, 1
-		   LD (XMessage), A
+ExitNoM4   LD A, 1						; 1 is the opcode of LD BC, nn
+		   LD (XMessage), A				
 
 		   POP HL
 		   POP BC
