@@ -662,7 +662,7 @@ CharMatch	LD		A,(DE)
 			JR		Z,CMPLoop
 
 ExitYesM4	XOR A				  ; M4 found, patch Maluva so Xmessages loaded at $0040 are not re-used, because M4 overwrites that memory area
-			LD 	(M4Patch + 1), A  ; This makes the delta of the JR there become 0, so whether is succesful or not, it jumps to next line
+			LD 	(M4Patch + 1), A  ; This makes the delta of the JR at that address become 0, so whether is succesful or not, it jumps to next line
 
 ExitNoM4   LD A, 1						; 1 is the opcode of LD BC, nn
 		   LD (XMessage), A				
