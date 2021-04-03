@@ -467,7 +467,6 @@ setDefaultDisk			XOR	A
                         DB      M_GETSETDRV
                         RET
 			
-
 ; *** Divides A by 10 and returns the remainder in A and the quotient in D^***
 DivByTen				LD 	D, A			; Does A / 10
 						LD 	E, 10			; At this point do H / 10
@@ -495,7 +494,7 @@ PatchForEnglish			LD HL, DAAD_READ_FILENAME_EN
 
 
 Filename				DB 	"UTO.ZXS",0
-ImgNumLine					DB 	0
+ImgNumLine				DB 	0
 SaveLoadFilename		DB 	"PLACEHOLD.SAV",0
 SaveLoadExtension		DB 	".SAV", 0
 XMESSFilename			DB  "0.XMB",0
