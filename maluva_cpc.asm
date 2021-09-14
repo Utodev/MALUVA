@@ -409,10 +409,34 @@ sfxFreqAY				DW	0xD65, 0xC9D, 0xBEB, 0xB42, 0xA9A, 0xA04, 0x971, 0x8E8, 0x86B, 0
 						DW	0x01B, 0x019, 0x018, 0x017, 0x015, 0x014, 0x013, 0x012, 0x011, 0x010, 0x00F, 0x00E  // Octave 8 (216-238)
 
 
+; Some firmware versions or setups of the M4 interface seem to corrupt the buffer where the Xmesages are stored. As the Xmessage function
+; check if the xmessage to be printed is already loaded in RAM due to a previous request of same message (or a close one), if the CheckM4Corruption
+; happens, some extra text is printed sometimes. M4 seems to overwrite the buffer are with its version, so we check for corruption by
+; searching for " M4 " at the beggining of buffer, and if found we act as if there were nothing in the buffer and load the content from the
+; disk again		
+CheckM4Corruption		LD HL, BUFFER2K_ADDR
+						LD A, (HL)
+						CP ' '
+						RET NZ ; No corruption
+						INC HL
+						LD A, (HL)
+						CP 'M'
+						RET NZ ; No corruption
+						INC HL
+						LD A, (HL)
+						CP '4'
+						RET NZ ; No corruption
+						INC HL
+						LD A, (HL)
+						CP ' '
+						RET NZ ; No corruption
+						; The string " M4 " has been found, so we should not use the content of the buffer
+						LD A, 255
+						LD (LastXmessFile), A
+						RET
 
 
-
-XMessage				CALL FindM4ROM
+XMessage				CALL CheckM4Corruption
 						LD 		L, D   ; First parameter (LSB) to L
 						POP 	IX
 						POP 	BC
@@ -433,7 +457,7 @@ XMessage				CALL FindM4ROM
 						LD 		B, A				;Check if file loaded is the same than last time, to avoid loading again						
 						LD 		A, (LastXmessFile)
 						CP 		B
-M4Patch					JR 		Z, AlreadyInRAM
+						JR 		Z, AlreadyInRAM
 
 						LD 		A, B				; Otherwise save current file to be read as last read file
 						LD		(LastXmessFile),A
@@ -628,49 +652,6 @@ HideScreen				LD 	HL, PaletteBuffer
 						LD 	HL, PaletteBuffer
 						CALL SetPalette
 						RET
-
-; ************** FIND M4 ROM						
-FindM4ROM	PUSH DE
-			PUSH BC
-			PUSH HL
-
-			LD	D,127		; Start Looking for ROM  (Counting Downwards)
-			
-ROMLoop 	PUSH	DE
-			LD		C,D
-			CALL	$B90F		; System/Interrupt friendly
-			LD		A,($C000)	; Must be 0x01
-			DEC 	A
-			JR		NZ, NotThisROM
-			LD		HL, ($C004)	; GET RSXCOMMAND_TABLE
-			LD		DE, M4_ROM_NAME	; ROM IDENTIFICATION LINE
-
-CMPLoop		LD		A,(DE)
-			XOR		(HL)			
-			JR		Z, CharMatch
-
-NotThisROM	POP		DE
-			DEC		D
-			JR		NZ, ROMLoop
-			JR 		ExitNoM4
-			RET
-			
-CharMatch	LD		A,(DE)
-			INC		HL
-			INC		DE
-			AND		0x80
-			JR		Z,CMPLoop
-
-ExitYesM4	XOR A				  ; M4 found, patch Maluva so Xmessages loaded at $0040 are not re-used, because M4 overwrites that memory area
-			LD 	(M4Patch + 1), A  ; This makes the delta of the JR at that address become 0, so whether is succesful or not, it jumps to next line
-
-ExitNoM4   LD A, 1						; 1 is the opcode of LD BC, nn
-		   LD (XMessage), A				
-
-		   POP HL
-		   POP BC
-		   POP DE
-		   RET
 
 
 
