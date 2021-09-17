@@ -409,37 +409,42 @@ sfxFreqAY				DW	0xD65, 0xC9D, 0xBEB, 0xB42, 0xA9A, 0xA04, 0x971, 0x8E8, 0x86B, 0
 						DW	0x01B, 0x019, 0x018, 0x017, 0x015, 0x014, 0x013, 0x012, 0x011, 0x010, 0x00F, 0x00E  // Octave 8 (216-238)
 
 ; Returns (in A record) number of the ROM where M4 is, or 255 if not M4 found 
-FindM4ROM				ld	d,127		; start looking for from (counting downwards)
-			
-romloop					push	de
-						ld		c,d
-						call	0xB90F		; system/interrupt friendly
-						ld		a,(0xC000)
-						cp		1
-						jr		nz, not_this_rom
-						ld		hl,(0xC004)	; get rsxcommand_table
-						ld		de,M4_ROM_NAME	; rom identification line
-cmp_loop				ld		a,(de)
-						xor		(hl)			; hl points at rom name
-						jr		z, match_char
+; First execution really calculates if M4 is present, then the code is patched to be LD A, n - RET
+FindM4ROM				LD  	A, 201		; this line is just to be patched later
+						LD (FindM4ROM + 2), A ; patch this instrucion so it becomes a RET
+
+						ld		D,127		; start looking for from (counting downwards)
+
+romloop					PUSH 	DE
+						LD		C,D
+						CALL	$B90F		; system/interrupt friendly
+						LD		A,($C000)
+						CP		1
+						JR		NZ, not_this_rom
+						LD		HL,($C004)	; get rsxcommand_table
+						LD		DE,M4_ROM_NAME	; rom identification line
+cmp_loop				LD		A,(DE)
+						XOR		(HL)			; hl points at rom name
+						JR		Z, match_char
 not_this_rom:
-						pop		de
-						dec		d
-						jr		nz, romloop
-						ld		a,255		; not found!
-						ret
+						POP		DE
+						DEC		D
+						JR		NZ, romloop
+						LD		A,255		; not found!
+						LD 		(FindM4ROM + 1), A ; patch frist LD i FindM4ROM
+						RET
 match_char
-						ld		a,(de)
-						inc		hl
-						inc		de
-						and		0x80
-						jr		z,cmp_loop
+						LD		A,(DE)
+						INC 	HL
+						INC		DE
+						AND		$80
+						JR		Z,cmp_loop
 			
 						; rom found, store the rom number
 			
-						pop	de			;  rom number
-						ld 	a,d
-						ret
+						POP AF			;  rom number
+						LD 		(FindM4ROM + 1), A ; patch frist LD i FindM4ROM
+						RET
 
 
 XMessage				LD 		L, D   ; First parameter (LSB) to L
