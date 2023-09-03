@@ -83,6 +83,8 @@ Init				LD 	D, A		; Preserve first parameter
 					JP  Z, XPart
 					CP  7
 					JP  Z, XUndone
+					CP 8
+					JP  Z, XJUMP   ;  for all the JZERO, JISAT, etc. condacts
 					CP 		255
 					JP 		Z, RestoreXMessage
 					JP 	ExitWithError
@@ -319,6 +321,66 @@ XUndone				POP IX				; Make sure IX is correct
 					PUSH IX
 					RES		4, (IX-1)						
 					JP 		cleanExitNotdone
+
+; XJUMP is not just a condact, but a lot of them. Basically any condition can be converted in a jump, which means on success a jump to some other condact happens
+; For instance JZERO 7 <label> means jumping to the label if flag 7 is zero, and JISNOTAT 4 12 <label> means jump to label if object 4 is not at location 12
+; When DRC converts that into externs this is what we find in the DDB
+; <EXTERN OPCODE> <ORIGINAL CONDACT OPCODE> <"8" (XJUMP)> <LSB OF OFFSET> <MSB of OFFSET> <CONDACT P1> [CONDACT P2]
+; For instance JZERO 17 <label> becomes:
+; <EXTERN OPCODE> <OPCODE OF ZERO> <8> <label addr LSB> <label addr MSB> <17>
+; And JISAT @100 12 <label> becomes:
+; <EXTERN OPCODE> <OPCODE OF ISAT +128> <8> <label addr LSB> <label addr MSB> <12>    (please notice opcode is +128 to signal indirection)
+
+XJUMP				LD 		A, D ;  Original Condact opcode at A
+					POP 	IX
+					POP 	BC
+					INC 	BC	 ; We need not only to increase BC, but also make sure when exiting it returns increased
+					LD 		E, (BC)
+					INC 	BC 
+					LD 		D, (BC) 
+					INC 	BC 
+
+					; At this point BC points to first parameter, A contains the opcode and DE points to the offset where to jump on success
+					; And now we have to do a tricky thing, as we are going to call the interpreter execution code with a condition condact
+					; and its parameters, but we only want to know the result, we don't want to make it exit the entry execution if it
+					; fails. Sadly, DAAD interpreter doesn't have a subroutine for each condact that you can CALL and then check carry on
+					; exit to see if it was sucessful. It's quite more complicated as the code for each condact exits via two absolute jumps,
+					; one for success and one for failure. What we are going to do is temporarily modify the destination of those two jumps
+					; to make them jump again to this code at two different entry points, and when that happens, we restore the original code
+					; there and continue as expected depending on condition success.
+
+					; Modify the places where the conditions jump
+					; First the success addr code, which is INC BC, POP HL, JP CONDACT_LOOP_ADDR, we replace that JP to jump to SuccessReturn below
+					PUSH HL
+					LD HL, SUCCESS_ADDR+3
+					LD (HL), SuccessReturn
+					; Now the failure return, which is something like this  POP HL, JP ENTRY_LOOP_ADDR
+					LD HL, SUCCESS_ADDR+2
+					LD (HL), FailureReturn
+					POP HL
+
+					PUSH DE  ; Preserve the offset where to jump
+
+					JP CONDACT_LOOP_ADDR + 1  ; we enter after the LD A,(BC) because A is already loaded
+
+FailureReturn		POP DE ; get the offset from stack just for cleaning
+					JR RestoreCode
+
+SuccessReturn		; Now we need to replace BC with the offset
+					POP BC; get the offset from stack
+					
+
+					; Now we restore the code we modified, so DAAD continues to run as usual
+RestoreCode			PUSH HL
+					LD HL, SUCCESS_ADDR+3
+					LD (HL), CONDACT_LOOP_ADDR
+					LD HL, SUCCESS_ADDR+2
+					LD (HL), ENTRY_LOOP_ADDR
+					POP HL
+					PUSH 	BC
+					PUSH 	IX
+					JR cleanExit
+
 
 
 XMessage			LD 		L, D ;  LSB at L
