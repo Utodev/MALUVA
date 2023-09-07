@@ -42,7 +42,7 @@
 ; and will call to addresses directly, so if you change just one byte it will fail. So ** DO NOT MOVE THIS INCLUDE AND DO NOT CHANGE ITS CONTENTS **
 Start				JR	 RealStart
 MySlot				DB 	0			; Dandanator ROM Generator will store the slot that works as "Slot1" here
-				INCLUDE "dandanAPI.asm"
+				INCLUDE "maluva_dandanator_API.asm"
 RealStart			DI
 				PUSH 	BC
 				PUSH 	IX			; IX points  to flags on entry, 256 bytes above it's current location of objects, and those 512 bytes is what a savegame stores
