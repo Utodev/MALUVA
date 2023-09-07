@@ -4,10 +4,11 @@ PROGRAM SC2DRG;
 USES sysutils;
 
 CONST TWO_KILOBYTES = 2048;
-	  VERSION = '0.9';
+	  VERSION = '0.10';
 
 
 TYPE cpcHeaderType =  ARRAY[0..127] of Byte;
+TYPE cpcBuffer = array[0..32778] of byte;
 
 PROCEDURE Syntax();
 VAR  BinaryName : String;
@@ -38,7 +39,7 @@ BEGIN
 		Writeln();
 		WriteLn('The file created would already have a CPC header. The output file should have .CPC extension, and have three digits for the number, i.e.: 001.CPC, 012.CPC, 118.CPC');
 		Writeln();
-		WriteLn('Note: although max line number is 96, having a 200 lines picture (full screen) is allowed.');
+		WriteLn('Note: although max line number is 96, having a 200 lines picture (full screen) is allowed. Please notice full screen pictures are not compressed.');
 		Halt(0);
 	END;
     IF uppercase(target)='ZX'	THEN
@@ -214,33 +215,147 @@ BEGIN
 END;	
 
 
+procedure DumpBuffer(var buffer: array of byte; size: word);
+var i: word;
+begin
+	for i:= 0 to size - 1 do
+		write(buffer[i], ' ');
+end;
+
+{ Takes  a file and returns compressed  data in a buffer, and size of the compressed data as function response }
+FUNCTION GenerateCPCCompressedData(var inFile: FILE; var outputBuffer:cpcBuffer; Lines: Word): word;
+var inputBuffer:  array[0..16383] of byte;   
+	inputPTR : Word;
+    preparedBuffer : array[0..16383] of byte;
+	preparedPTR: Word;
+	preparedSize : Word;
+	outputPTR : Word;
+	counters : array[0..255] of word;
+    i, j: word;
+	spare, MinValue: Word;
+	MinValueIndex : Byte;
+	prevValue, currValue : byte;
+	repeatCounter: byte;
+BEGIN
+
+	// read the whole bytes data
+	BlockRead(inFile, inputBuffer, 16384, spare);
+
+
+	// Prepare another buffer that contains only the pixels we are going to paint, depending on "Lines"
+	inputPTR := 0;
+	preparedPTR := 0;
+	FOR j:= 0 to 7 DO
+	BEGIN
+		for i := 0 to Lines * 10 -1  DO preparedBuffer[preparedPTR + i] := inputBuffer[inputPTR + i];
+		inputPTR := inputPTR + $800;
+		preparedPTR := preparedPTR + lines * 10;
+	END;
+
+	preparedSize := 80 * lines;
+
+	// Calculate which byte vaule is used the less, to use it as compression prefix
+	FOR i := 0 to 255 DO counters[i]:=0; // set counters to zero
+
+    // Count how much times each byte value is repeated in the buffer
+	FOR i := 0 to preparedSize - 1 DO
+	  counters[preparedBuffer[i]] := counters[preparedBuffer[i]] + 1;
+
+	 // Determine which is the value repeated the less. We will use that value as mark of compression, so if a value is repeated 6 times, we will
+	 // save <mark of compression> 6 <value>. This also means if mark of compression value appears it will allways have to be written as compressed data,
+	 // even if it only appears once. 
+	 MinValue := 65535;
+	 MinValueIndex := 0;
+	 FOR i := 0 to 255 DO
+	  IF counters[i]<MinValue THEN
+	  BEGIN
+	   MinValue := counters[i];
+	   MinValueIndex := i;
+	  END;
+
+	// Now we have the mark of compression at MinValueIndex, we can start compressing the data
+
+	WriteLn('Repeat prefix:', MinValueIndex);
+
+	outputPTR := 0;
+	
+	
+    // Take first value in buffer to start RLE code with a real "previous" data
+	prevValue := preparedBuffer[0]; // A fake previous value that matches first one
+	repeatCounter := 1; 
+	preparedPTR := 1; // start from second byte
+	
+	{This is a little tricky: we are going to make sure the byte after the last valid one in the buffer, that is preparedBuffer[preparedSize], is different to the 
+	last valid one , that is, preparedBuffer[preparedSize-1]. We do that in order to make possible the FOR below to go one bye further than needed. Why? Because
+	that way that extra byte will force the algorythm to dump any repeats it may have, and we don't have to repeat the "dump" code after the FOR loop, in order
+	to dump what may be left in the RLE repeats.}
+	preparedBuffer[preparedSize] := (preparedBuffer[preparedSize-1] + 1) MOD 256; // So we make sure the byte after the last one  is different to the last one
+
+	FOR i:=1 TO preparedSize DO // We make the loop start one byte after the first one, as e have already taken hat one above, and we make the for loop go one byte further than needed, to reach that extra byte explained above
+	BEGIN
+	 	currValue := preparedBuffer[preparedPTR];
+		preparedPTR := preparedPTR + 1;
+		if (currValue = prevValue) AND (repeatCounter<255) 
+			THEN repeatCounter:= repeatCounter + 1
+			ELSE
+			BEGIN
+				IF (prevValue = MinValueIndex) OR (repeatCounter>2) THEN	 // Save a repeat sequence
+				BEGIN
+					outputBuffer[outputPTR] := MinValueIndex;
+					outputBuffer[outputPTR+1] := repeatCounter;
+					outputBuffer[outputPTR+2] := prevValue;
+					outputPTR := outputPTR + 3;
+				END
+				ELSE
+				BEGIN
+					// Save non repeat sequence repeatCounter times	
+					for j:= 0 to repeatCounter -1 DO outputBuffer[outputPTR+j] := prevValue;
+					outputPTR := outputPTR + repeatCounter;
+				END;
+				prevValue := currValue;
+				repeatCounter := 1;
+			END;
+	 END;
+	 // Now we don't have to take care of any reminding repeats, because the FOR loop above will always dump them
+
+	
+
+	 // Dump mark of end of data
+    outputBuffer[outputPTR] := MinValueIndex;
+	outputBuffer[outputPTR+1] := 0;
+	outputPTR := outputPTR + 2;
+
+	WriteLn('Total: 16000, Used: ',preparedSize, ', Compressed: ', outputPTR - 1, ' bytes -  Ratio:', (outputPTR - 1) * 100 / preparedSize:0:2 , '%' );
+	GenerateCPCCompressedData := outputPTR - 1; // Return compressed data size
+	
+END;
 
 PROCEDURE CPC(inputFilename, outputFilename: string; lines:word);
-VAR i, bytesToRead, current2KBuffercount: word;
+VAR i: word;
 	palFileName:String;
 	inFile, outFile: FILE;
-	TempBuffer: ARRAY [0..2047] OF byte;
 	Palette : ARRAY[0..15] OF byte;
 	cpcHeader : cpcHeaderType;
 	AuxStr: String;
 	CheckSum: Word;
-	ScansPer2kBuffer: Byte;
 	FileSize : Word;
-	Readed: Longint;
 	Offset: Word;
+	Buffer: cpcBuffer;
+	BytesPerScanline: Word;
 	(* 
 	 CPC FILE FORMAT IS (after the AMSDOS header):
-	 00    : scans per 2k buffer, 
+	 00    : 1 -> Compressed data follows, 
 	 01-16 : palette used, first one is for background, second one for text ink
-	 17-18  :number of lines multiplied by 10, that is, number of bytes per scanline
-	 19-   : data as in a SCR file, but with less lines - or not.
+	 17-19 : Bytes perscaline, that is, 80 * lines MOD 8
+	 19-   : compressed data
 
-	 Exception: 200 lines graphic contains 16384 bytes, 16384 for data, and 16 for palette, but the palette is over the last 16 bytes of data, where
+	 If first byte 0 equals 0, then a uncompressed full screen follows: 16384 for data, and 16 for palette, but the palette is over the last 16 bytes of data, where
 	 the spare 48 bytes are. 16384 in CPC header and use CAS_IN_DIRECT to load directly to VRAM, then set the palette (better set all palette to black first
 	 to avoid strange colours on screen)
 	 *)
 	
 BEGIN
+    BytesPerScanline := Lines MOD 8 * 80; // Number of bytes each of the scanlines will have
 	palFileName := changeFileExt(inputFilename,'.pal');
 	AssignFile(inFile, palFileName);  
 	TRY
@@ -273,7 +388,8 @@ BEGIN
 	END; 
 	// Prepare Header
 	IF Lines=200 THEN FileSize := 16384
-				 ELSE FileSize := 7 + 2048 * (8 DIV (2048 DIV (lines * 10)));
+				 ELSE FileSize := GenerateCPCCompressedData(inFile, Buffer, Lines) + 16 + 2; // 16 bytes more for the palette, 2 bytes more for the scanlines*10 value
+					 
 
 	FillChar(cpcHeader, 128, 0);
 	AUXSTR:='UTO DEV HCK';
@@ -298,26 +414,10 @@ BEGIN
 		BlockWrite(outFile, Palette, 16);
 	END
 	ELSE
-	BEGIN             // Partial file, more tricky
-		BytesToRead := lines * 10;
-		ScansPer2kBuffer := TWO_KILOBYTES DIV BytesToRead;
-		// Save number of lines and palette
-		BlockWrite(outFile, ScansPer2kBuffer, 1);
+	BEGIN             // Partial file, palette first, then compressed data
 		BlockWrite(outFile, Palette, 16);
-		BlockWrite(outFile, BytesToRead, 2);		
-		current2KBuffercount := 19;
-	    FOR i:= 1 TO 8 DO
-		BEGIN
-		 	Blockread(inFile, TempBuffer, TWO_KILOBYTES, Readed);
-		 	BlockWrite(outFile, TempBuffer, BytesToRead);
-		 	current2KBuffercount := current2KBuffercount + bytesToRead;
-		 	IF (current2KBuffercount+bytesToRead > TWO_KILOBYTES) THEN
-		 	BEGIN
-		 		Fillchar(TempBuffer, TWO_KILOBYTES - current2KBuffercount, 0);
-		 		BlockWrite(outFile, TempBuffer, TWO_KILOBYTES - current2KBuffercount);
-		 		current2KBuffercount := 0;
-		 	END;
-		END;
+		BlockWrite(outFile, BytesPerScanline, 2);
+		BlockWrite(outFile, Buffer, FileSize - 16 - 2);
 	END;
 	CloseFile(inFile);
 	CloseFile(outFile);
