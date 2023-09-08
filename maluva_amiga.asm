@@ -7,6 +7,10 @@
 ; Please notice this is my first ever code for the Amiga, and depite a used 68000 assembly for 
 ; some weeks 30 years ago, that is all the experience I have, so don't expect too much optimization
 
+
+; WORK IN PROGRESS, NOT COMPLETED
+
+
 ; ********************************************************************                        
 ;                           CONSTANTS 
 ; *******************************************************************
