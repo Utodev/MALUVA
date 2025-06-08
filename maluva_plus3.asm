@@ -449,7 +449,8 @@ pageOutDOS				LD   BC,$7FFD       ;I/O address of horizontal ROM/RAM switch
 						SET  4,A            ;move left to right (ROM 2 to ROM 3)
 						AND  248            ;also want RAM page 0
 						LD   (BANKM),A      ;update the system variable (very important)
-						OUT  (C),A          ;make the switch						
+						OUT  (C),A          ;make the switch
+						RET					
 		
 ; *** Divides A by 10 and returns the remainder in A and the quotient in D^***
 DivByTen				LD 	D, A			; Does A / 10
