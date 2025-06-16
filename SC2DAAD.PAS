@@ -18,7 +18,7 @@ BEGIN
 	Writeln();
 	WriteLn('SYNTAX: ',BinaryName,' <target> <inputFilename> <outputFilename> <lines> [[transparency|BorderColor] [TargetColor]]');
 	Writeln();
-	Writeln('Target may be c64, cp4, cpc, msx, zx,  uno, or next. CP4 stands for Commodore Plus/4 and uno stands for ZX-Uno.');
+	Writeln('Target may be c64, cp4, cpc, msx, zx,  uno, next. CP4 stands for Commodore Plus/4 and uno stands for ZX-Uno.');
 	Writeln();
 	Writeln('Transparency could only be used in ZX Spectrum Next, value it''s a 0-255 value representing a color in RRRGGGBB format, or ''auto''. If value is 0 there will be no transparency so pure black cannot be used as transparent color. ');
 	Writeln();
@@ -480,9 +480,10 @@ PROCEDURE NEXT(inputFilename, outputFilename: string; lines:byte; transparency :
 	(* 
 	 NXT FILE FORMAT IS:
 	 00     : transparency color, if 0 no transparency is applied
-	 01     : number of lines
-	 02-257 : palette values
-	 257-   : pixel information, 256 bytes per line
+	 01     : width in pixels
+	 02     : height in pixels
+	 Followed by 512 bytes for the palette, 2 bytes per color, 9 bits per color (RRRGGGBB xxxxxxxB)
+	 Followed by the pixels, width x height bytes
 	*)
 	// auto=true means ignore the transparency color, and use the one that repeats the most, unless it's 0 which will raise an error
 	// Hey! I've borrowed the PCX decoding code from PCX2TWK, an utility I made in 1995 as part of my text adventure game engine NMP. So thanks to the 24 years younger myself for that work :-D
@@ -536,7 +537,7 @@ BEGIN
 		A := RGB SHR 1;
 		BlockWrite(outFile, A, 1);  // save first 8 bits
 		A := RGB AND 1;
-		BlockWrite(outFile, A, 1);  // save first 8 bits
+		BlockWrite(outFile, A, 1);  // sa ve 9th byte
 		Palette8B[i] := RGB;
 	END;
 	// Process the pixels
