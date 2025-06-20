@@ -4,7 +4,7 @@ PROGRAM SC2DRG;
 USES sysutils;
 
 CONST TWO_KILOBYTES = 2048;
-	  VERSION = '0.9';
+	  VERSION = '0.9.1';
 
 
 TYPE cpcHeaderType =  ARRAY[0..127] of Byte;
@@ -737,7 +737,7 @@ BEGIN
 	EXCEPT
 	 on E: Exception DO Error('Invalid C64 ART file:' + E.message);
 	END; 
-	if (FileSize(inFile)<>9002) AND (FileSize(inFile)<>9009) THEN Error('Invalid file. File size must be 9002 or 9009 bytes (Art Studio HiRes .ART file).');
+	if (FileSize(inFile)<>9002) AND (FileSize(inFile)<>9009)  AND (FileSize(inFile)<>9003) THEN Error('Invalid file. File size must be 9002, 9003 or 9009 bytes (Art Studio HiRes .ART file).');
 	AssignFile(outFile, outputFilename);
 	TRY
 	Rewrite(outFile, 1);
