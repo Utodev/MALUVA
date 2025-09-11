@@ -4,7 +4,7 @@ PROGRAM SC2DRG;
 USES sysutils;
 
 CONST TWO_KILOBYTES = 2048;
-	  VERSION = '0.9.1';
+	  VERSION = '0.9.2';
 
 
 TYPE cpcHeaderType =  ARRAY[0..127] of Byte;
@@ -723,9 +723,10 @@ VAR inFile, outFile: FILE;
 		DataBuffer : pointer;
 	(* 
 	 C64 HiRes FILE FORMAT IS:
-	 00    : number of lines div 8
-	 01	   : byte which is used to show repeats in RLE encoding
-	 02-   : RLE encoded compressed bytes for the screen pixels
+	 00 : '64' signature
+	 02	: number of lines div 8
+	 03	   : byte which is used to show repeats in RLE encoding
+	 04-   : RLE encoded compressed bytes for the screen pixels
 	 nn-   : byte which is used to show repeats in attributes for RLE encoding
 	 nn+1-   : RLE encoded attributes
 	*)
@@ -745,6 +746,12 @@ BEGIN
 	 on E: Exception DO Error('Can''t open file for output:' + E.message);
 	END; 
 	
+	// Signature
+	Aux := ord('6'); 
+	BlockWrite(outFile,Aux,1); 
+	Aux := ord('4'); 
+	BlockWrite(outFile,Aux,1); 
+
 	Aux := lines div 8;
 	BlockWrite(outFile,Aux,1); // Number of lines divided by 8
 	
@@ -770,10 +777,11 @@ VAR 	inFile, outFile: FILE;
 		ExtLines: Byte;
 	(* 
 	 C64 Multicolor FILE FORMAT IS:
-	 00    : always 0  - Marks the file is a Multicolor image
-	 01	   ; number of lines divided by 8
-	 02	   : byte which is used to show repeats in RLE encoding of BITMAP
-	 03-   : RLE encoded compressed bytes for the screen pixels
+	 00    : '64' signature
+	 02    : always 0  - Marks the file is a Multicolor image
+	 03	   ; number of lines divided by 8
+	 04	   : byte which is used to show repeats in RLE encoding of BITMAP
+	 05-   : RLE encoded compressed bytes for the screen pixels
 	 nn-   : byte which is used to show repeats in COLOR for RLE encoding
 	 nn+1- : RLE encoded COLOR
 	 qq-   : bytes which is used to show repeats in SCREEN for 
@@ -801,6 +809,13 @@ BEGIN
 
 	If Lines<>96 THEN Error('Multicolor images for C64 must be 96 pixels high, as the split area is fixed.');
 	
+	// Signature
+	Aux := ord('6'); 
+	BlockWrite(outFile,Aux,1); 
+	Aux := ord('4'); 
+	BlockWrite(outFile,Aux,1); 
+
+
 	Aux := 0;
 	BlockWrite(outFile,Aux,1); // Mark of Multicolor file
 	ExtLines := Lines + 8;
