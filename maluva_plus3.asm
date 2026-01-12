@@ -279,6 +279,7 @@ SaveGame				LD  	A, P3DOS_WRITE & $FF
 DoReadOrWrite		
 						EI
 ReadFilenameCall		CALL DAAD_READ_FILENAME_ES	; Ask for file name
+						SET     6,(IX-10) ; restore wordrap
 						DI
 PatchFileName			LD A, $FF							; +3DOS expects it to be $FF terminated
 PatchFilenameEON		LD (DAAD_FILENAME_ADDR_ES + 10),A

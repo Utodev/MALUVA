@@ -275,6 +275,7 @@ DoReadOrWrite
 ReadFilenameCall	CALL	DAAD_READ_FILENAME_ES	; Ask for file name
 					DI
 					CALL 	cleanSaveName		; Convert DAAD 10 filename into 8.3 filename
+					SET     6,(IX-10) ; restore wordrap
 
 ; --- Set default disk  
 					CALL 	setDefaultDisk
@@ -313,7 +314,7 @@ DAADSysmesCall		CALL    DAAD_SYSMESS_ES
 XPart				LD 		A, D
 					ADD		'0'
 					LD      (XMESSFilename), A
-					JR 		cleanExit
+					JP 		cleanExit
 
 XUndone				POP IX				; Make sure IX is correct
 					PUSH IX

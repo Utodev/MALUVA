@@ -285,6 +285,7 @@ DoReadOrWrite
 ReadFilenameCall	CALL	DAAD_READ_FILENAME_ES	; Ask for file name
 					DI
 					CALL 	cleanSaveName		; Convert DAAD 10 filename into 8.3 filename
+					SET     6,(IX-10) ; restore wordrap
 
 ; --- Set default disk  
 					CALL 	setDefaultDisk
