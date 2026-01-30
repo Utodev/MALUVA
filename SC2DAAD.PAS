@@ -1,10 +1,10 @@
-PROGRAM SC2DRG; 
+PROGRAM SC2DAAD; 
 {$MODE OBJFPC}
 
 USES sysutils;
 
 CONST TWO_KILOBYTES = 2048;
-	  VERSION = '0.9.2';
+	  VERSION = '0.10';
 
 
 TYPE cpcHeaderType =  ARRAY[0..127] of Byte;
@@ -119,12 +119,15 @@ END;
 
 PROCEDURE Error(S:String);
 BEGIN
-	Writeln(S + '.');
+	Writeln('Error: ' + S + '.');
 	Writeln();
 	Halt(1);
 END;
 
-
+PROCEDURE Warning (S:String);
+BEGIN
+	Writeln('Warning: ' + S + '.');
+END;
 
 PROCEDURE WriteCPCHeaderWord(var header: cpcHeaderType;index: Byte; val: Word);
 BEGIN
@@ -228,6 +231,7 @@ VAR i, bytesToRead, current2KBuffercount: word;
 	FileSize : Word;
 	Readed: Longint;
 	Offset: Word;
+	TotalPalette: Word;
 	(* 
 	 CPC FILE FORMAT IS (after the AMSDOS header):
 	 00    : scans per 2k buffer, 
@@ -250,12 +254,18 @@ BEGIN
 		BEGIN
 		 Seek(inFile, Offset);
 		 Blockread(inFile, Palette[i], 1);
-		 Offset := Offset  + 12;  // one palette value very 12 bytes
+		 Offset := Offset  + 12;  // one palette value every 12 bytes
 		END;
 	EXCEPT
 		on E: Exception DO Error('PAL file not found or not valid, the .pal file for the image should be located at same folder than SCR file. If your OS is case sensitive, make sure the PAL file has the extension in lowercase.' + E.Message);
 	END; 
 	CloseFile(inFile);
+
+	TotalPalette:=0;
+	for i:= 0 TO 15 DO
+	 TotalPalette := TotalPalette + Palette[i];
+	if (TotalPalette=0) THEN Warning('All colors in the palette are black.');
+	 
 
 	AssignFile(inFile, inputFilename);
 	TRY
@@ -852,9 +862,10 @@ VAR 	inFile, outFile: FILE;
 		DataBuffer : pointer;
 	(* 
 	 CP4  FILE FORMAT IS:
-	 00	   ; number of lines divided by 8
-	 01	   : byte which is used to show repeats in RLE encoding of BITMAP
-	 02-   : RLE encoded compressed bytes for the color pixels
+	 00 : '04' signature
+	 02	   ; number of lines divided by 8
+	 03	   : byte which is used to show repeats in RLE encoding of BITMAP
+	 04-   : RLE encoded compressed bytes for the color pixels
 	 nn-   : byte which is used to show repeats in COLOR for RLE encoding
 	 nn+1- : RLE encoded COLOR 
 	 qq-   : bytes which is used to show repeats in SCREEN for  (luminance)
@@ -879,6 +890,12 @@ BEGIN
 	If Lines>200 THEN Error('Plus/4 images height can''tbe over 200 pixels.');
 	If Lines MOD 8 <> 0 THEN Error('Plus/4 images height should be a multiple of 8.');
 	
+	Aux := ord('0'); 
+	BlockWrite(outFile,Aux,1); 
+	Aux := ord('4');
+	BlockWrite(outFile,Aux,1); 
+
+
 	Aux := Lines div 8;
 	BlockWrite(outFile,Aux,1); // Number of lines divided by 8
 	
